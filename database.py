@@ -1,7 +1,6 @@
-# database.py - Neon PostgreSQL 연결 최적화 버전
+# database.py - 메모리 누수 방지 최적화 버전
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 import os
 from dotenv import load_dotenv
 
@@ -25,18 +24,33 @@ except ValueError:
     print("🔄 기본 포트 5432를 사용합니다...")
     port_int = 5432
 
-# Neon에 최적화된 SQLAlchemy 연결 문자열
+# 메모리 누수 방지를 위한 최적화된 연결 설정
 DATABASE_URL = f"postgresql+psycopg2://{USER}:{PASSWORD}@{HOST}:{port_int}/{DBNAME}?sslmode=require"
 
 try:
-    # Neon에 최적화된 엔진 설정
+    # 메모리 효율적인 엔진 설정 (Render 무료 플랜 최적화)
     engine = create_engine(
         DATABASE_URL,
+        # 연결 풀 크기 최적화 (메모리 사용량 줄이기)
+        pool_size=2,  # 기본 연결 수 (기존 5 → 2)
+        max_overflow=3,  # 추가 연결 수 (기존 10 → 3)
+        pool_timeout=20,  # 연결 대기 시간
+        pool_recycle=1800,  # 30분마다 연결 재생성 (메모리 정리)
         pool_pre_ping=True,  # 연결 상태 확인
-        pool_recycle=300,  # 5분마다 연결 재생성 (Neon 권장사항)
-        pool_size=5,  # 연결 풀 크기
-        max_overflow=10,  # 최대 추가 연결
-        echo=False  # SQL 로그 (개발 시에만 True)
+
+        # 연결 최적화
+        connect_args={
+            "application_name": "lol_team_matcher",
+            "connect_timeout": 10,
+            # PostgreSQL 특정 최적화
+            "options": "-c default_transaction_isolation=read_committed"
+        },
+
+        # 로깅 최소화 (메모리 절약)
+        echo=False,
+
+        # 엔진 최적화
+        future=True  # SQLAlchemy 2.0 스타일 사용
     )
 
     # 연결 테스트
@@ -46,23 +60,36 @@ try:
         result = connection.execute(text("SELECT version()"))
         version = result.fetchone()[0]
         print(f"✅ Neon PostgreSQL 연결 성공!")
-        print(f"📊 PostgreSQL 버전: {version[:50]}...")
+        print(f"📊 연결 풀 설정: pool_size=2, max_overflow=3")
+        print(f"🔧 PostgreSQL 버전: {version[:50]}...")
 
 except Exception as e:
     print(f"❌ PostgreSQL 연결 실패: {e}")
     print("🔄 SQLite로 폴백합니다...")
 
-    # SQLite로 폴백
+    # SQLite로 폴백 (메모리 효율적 설정)
     DATABASE_URL = "sqlite:///./lol_team_matching.db"
     engine = create_engine(
         DATABASE_URL,
-        connect_args={"check_same_thread": False},
-        echo=False
+        connect_args={
+            "check_same_thread": False,
+            "timeout": 20  # SQLite 타임아웃 설정
+        },
+        echo=False,
+        # SQLite 최적화
+        pool_timeout=20,
+        pool_recycle=-1  # SQLite는 연결 재활용하지 않음
     )
     print("✅ SQLite 데이터베이스 연결 완료")
 
-# 세션 생성
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# 세션 생성 (메모리 효율적 설정)
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    # 메모리 최적화
+    expire_on_commit=False  # 커밋 후 객체 만료 방지 (메모리 사용량 줄임)
+)
 
 # 베이스 클래스 생성
 Base = declarative_base()

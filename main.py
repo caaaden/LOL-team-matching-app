@@ -1,19 +1,24 @@
-# main.py 상단 부분 - import 수정
+# main.py - 메모리 누수 방지 및 최적화 버전
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, Body, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from contextlib import asynccontextmanager
 import os
 import uvicorn
 import math
 import traceback
+import gc
+import psutil
+import asyncio
 
 from database import SessionLocal, engine, Base
 import models
@@ -21,14 +26,7 @@ import schemas
 from utils import calculate_tier_score, balance_teams, update_team_match_scores, POSITIONS_ORDER, \
     distribute_players_to_groups
 
-# ... (상단 동일) ...
-Base.metadata.create_all(bind=engine)
-
-app = FastAPI(title="LoL 팀 매칭 시스템")
-
-templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
+# 환경 설정
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-is-still-secret-but-use-env-var")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 120
@@ -40,12 +38,23 @@ ADMIN_USER_ID = os.getenv("ADMIN_USER_ID", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Qv4RDGoEE8G41ru")
 
 
+# 메모리 누수 방지를 위한 개선된 데이터베이스 세션 관리
 def get_db():
+    """개선된 데이터베이스 세션 관리 - 메모리 누수 방지"""
     db = SessionLocal()
     try:
         yield db
+    except Exception as e:
+        # 예외 발생 시 롤백 처리
+        db.rollback()
+        print(f"데이터베이스 세션 오류: {e}")
+        raise
     finally:
-        db.close()
+        # 세션 확실히 종료
+        try:
+            db.close()
+        except Exception as e:
+            print(f"세션 종료 중 오류: {e}")
 
 
 def create_admin_user_on_startup(db: Session):
@@ -64,12 +73,10 @@ def create_admin_user_on_startup(db: Session):
             db.rollback()
             print(f"Error creating admin user: {e}")
     elif not verify_password(ADMIN_PASSWORD, admin_user.hashed_password):
-        # --- MODIFIED START ---
         # 비밀번호 변경 시 기존 세션도 삭제하여 재로그인 유도
         existing_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == admin_user.id).first()
         if existing_session:
             db.delete(existing_session)
-        # --- MODIFIED END ---
         admin_user.hashed_password = get_password_hash(ADMIN_PASSWORD)
         try:
             db.commit()
@@ -81,13 +88,117 @@ def create_admin_user_on_startup(db: Session):
         print(f"Admin user '{ADMIN_USER_ID}' verified.")
 
 
-@app.on_event("startup")
-async def startup_event():
+# 만료된 세션 정리를 위한 백그라운드 태스크
+async def cleanup_expired_sessions():
+    """만료된 활성 세션 정리 - 메모리 누수 방지"""
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                # 만료된 세션 찾기
+                expired_sessions = db.query(models.ActiveSession).filter(
+                    models.ActiveSession.expires_at < datetime.utcnow()
+                ).all()
+
+                if expired_sessions:
+                    print(f"🧹 만료된 세션 {len(expired_sessions)}개 정리 중...")
+
+                    # 만료된 세션 삭제
+                    for session in expired_sessions:
+                        db.delete(session)
+
+                    db.commit()
+                    print(f"✅ 만료된 세션 정리 완료")
+
+            except Exception as e:
+                print(f"❌ 세션 정리 중 오류: {e}")
+                db.rollback()
+            finally:
+                db.close()
+
+        except Exception as e:
+            print(f"❌ 세션 정리 태스크 오류: {e}")
+
+        # 1시간마다 실행
+        await asyncio.sleep(3600)
+
+
+# 메모리 모니터링 미들웨어
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """애플리케이션 시작/종료 시 실행되는 함수"""
+    # 시작 시
+    print("🚀 애플리케이션 시작 - 메모리 최적화 모드")
+
+    # 백그라운드 태스크 시작
+    cleanup_task = asyncio.create_task(cleanup_expired_sessions())
+
+    # 데이터베이스 테이블 생성
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✅ 데이터베이스 테이블 생성 완료")
+    except Exception as e:
+        print(f"❌ 테이블 생성 중 오류: {e}")
+        print("🔄 계속 진행합니다...")
+
+    # 관리자 사용자 생성
     db = SessionLocal()
     try:
         create_admin_user_on_startup(db)
     finally:
         db.close()
+
+    yield
+
+    # 종료 시
+    print("🛑 애플리케이션 종료 - 정리 작업 중...")
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
+
+# FastAPI 앱 생성 (lifespan 적용)
+app = FastAPI(title="LoL 팀 매칭 시스템", lifespan=lifespan)
+
+# 압축 미들웨어 추가 (성능 향상)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# 정적 파일 및 템플릿 설정
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# 메모리 모니터링 미들웨어 추가
+@app.middleware("http")
+async def monitor_memory(request: Request, call_next):
+    """메모리 사용량 모니터링 미들웨어"""
+    # 요청 전 메모리 사용량
+    process = psutil.Process()
+    before_memory = process.memory_info().rss / 1024 / 1024  # MB
+
+    response = await call_next(request)
+
+    # 요청 후 메모리 사용량
+    after_memory = process.memory_info().rss / 1024 / 1024  # MB
+    memory_diff = after_memory - before_memory
+
+    # 메모리 사용량이 크게 증가한 경우
+    if memory_diff > 5:  # 5MB 이상 증가
+        print(f"⚠️ 메모리 사용량 증가: {memory_diff:.2f} MB - {request.method} {request.url.path}")
+
+        # 가비지 컬렉션 실행
+        collected = gc.collect()
+        if collected > 0:
+            print(f"🧹 가비지 컬렉션: {collected}개 객체 정리")
+
+    # 전체 메모리 사용량이 높은 경우 경고
+    if after_memory > 400:  # 400MB 이상 (Render 512MB 제한 고려)
+        print(f"🚨 높은 메모리 사용량: {after_memory:.2f} MB")
+        gc.collect()  # 강제 가비지 컬렉션
+
+    return response
 
 
 def verify_password(plain_password, hashed_password):
@@ -104,9 +215,12 @@ def get_user_from_db(db, user_id: str) -> Optional[models.User]:
 
 def authenticate_user(db, user_id: str, password: str) -> Optional[models.User]:
     user = get_user_from_db(db, user_id)
-    if not user: return None
-    if not verify_password(password, user.hashed_password): return None
-    if user.user_id != ADMIN_USER_ID: return None
+    if not user:
+        return None
+    if not verify_password(password, user.hashed_password):
+        return None
+    if user.user_id != ADMIN_USER_ID:
+        return None
     return user
 
 
@@ -117,17 +231,19 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-# --- MODIFIED START: Active Session Check Logic ---
+# 활성 세션 확인 로직
 async def get_current_user_from_cookie(request: Request, db: Session = Depends(get_db)) -> Optional[models.User]:
     token = request.cookies.get("access_token")
-    if not token or not token.startswith("Bearer "): return None
+    if not token or not token.startswith("Bearer "):
+        return None
 
     token = token.replace("Bearer ", "")
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id_from_token: Optional[str] = payload.get("sub")
-        if user_id_from_token is None: return None
+        if user_id_from_token is None:
+            return None
     except JWTError:
         return None
 
@@ -147,9 +263,6 @@ async def get_current_user_from_cookie(request: Request, db: Session = Depends(g
         return None
 
     return user
-
-
-# --- MODIFIED END ---
 
 
 async def login_required(user: Optional[models.User] = Depends(get_current_user_from_cookie)):
@@ -177,7 +290,7 @@ async def login_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("login.html", {"request": request, "error": error_message})
 
 
-# --- MODIFIED START: Login Logic to handle Active Session ---
+# 로그인 로직 (활성 세션 처리)
 @app.post("/login", name="login_form_submit")
 async def login_form_post(request: Request, user_id: str = Form(...), password: str = Form(...),
                           db: Session = Depends(get_db)):
@@ -211,16 +324,18 @@ async def login_form_post(request: Request, user_id: str = Form(...), password: 
     db.commit()
 
     response = RedirectResponse(url=app.url_path_for("home"), status_code=status.HTTP_303_SEE_OTHER)
-    response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True,
-                        max_age=int(access_token_expires.total_seconds()), samesite="Lax",
-                        secure=request.url.scheme == "https")
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {access_token}",
+        httponly=True,
+        max_age=int(access_token_expires.total_seconds()),
+        samesite="Lax",
+        secure=request.url.scheme == "https"
+    )
     return response
 
 
-# --- MODIFIED END ---
-
-
-# --- MODIFIED START: Logout to clear Active Session ---
+# 로그아웃 (활성 세션 정리)
 @app.get("/logout", name="logout")
 async def logout(request: Request, db: Session = Depends(get_db)):
     # 쿠키에서 토큰을 읽어와 DB의 세션 정보를 삭제
@@ -237,18 +352,18 @@ async def logout(request: Request, db: Session = Depends(get_db)):
     return response
 
 
-# --- MODIFIED END ---
-
-
 @app.get("/player-management", response_class=HTMLResponse, name="player_management_page")
 async def player_management_page(request: Request, admin: models.User = Depends(login_required),
                                  db: Session = Depends(get_db)):
     players = db.query(models.Player).order_by(models.Player.nickname).all()
-    return templates.TemplateResponse("player_management.html", {"request": request, "user": admin, "players": players,
-                                                                 "Position": models.Position})
+    return templates.TemplateResponse("player_management.html", {
+        "request": request,
+        "user": admin,
+        "players": players,
+        "Position": models.Position
+    })
 
 
-# ... (이하 나머지 코드는 변경 없음, 그대로 유지) ...
 @app.post("/players/", response_model=schemas.Player, name="create_player_api", status_code=status.HTTP_201_CREATED,
           tags=["api_player"])
 def create_player_api(player: schemas.PlayerCreate, db: Session = Depends(get_db),
@@ -319,32 +434,30 @@ def update_player_api(player_id: int, player_data: schemas.PlayerCreate, db: Ses
         return schemas.Player.from_orm(player_in_db)  # 커스텀 from_orm 사용
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"닉네임 '{player_data.nickname}' 또는 고유 값 중복.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"닉네임 '{player_data.nickname}' 또는 고유 값 중복.")
     except Exception as e:
         db.rollback()
         print(f"플레이어 업데이트 중 예외: {e}")
         traceback.print_exc()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail="플레이어 업데이트 중 서버 오류")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="플레이어 업데이트 중 서버 오류")
 
 
 @app.delete("/players/{player_id}", name="delete_player_api", status_code=status.HTTP_200_OK, tags=["api_player"])
 def delete_player_api(player_id: int, db: Session = Depends(get_db), admin: models.User = Depends(login_required)):
     player = db.query(models.Player).filter(models.Player.id == player_id).first()
-    if not player: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="플레이어를 찾을 수 없습니다")
+    if not player:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="플레이어를 찾을 수 없습니다")
     try:
         db.query(models.TeamAssignment).filter(models.TeamAssignment.player_id == player_id).delete(
             synchronize_session='fetch')
-        db.delete(player);
+        db.delete(player)
         db.commit()
         return {"message": f"플레이어 '{player.nickname}' (ID: {player_id}) 삭제 완료.", "player_id": player_id}
     except Exception as e:
-        db.rollback();
-        print(f"플레이어 삭제 중 예외: {e}");
-        traceback.print_exc();
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"플레이어 삭제 오류: {str(e)}")
+        db.rollback()
+        print(f"플레이어 삭제 중 예외: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"플레이어 삭제 오류: {str(e)}")
 
 
 @app.get("/match-maker", response_class=HTMLResponse, name="match_maker_page")
@@ -352,8 +465,12 @@ async def match_maker_page(request: Request, admin: models.User = Depends(login_
                            db: Session = Depends(get_db)):
     players = db.query(models.Player).order_by(models.Player.nickname).all()
     recent_matches = db.query(models.Match).order_by(models.Match.match_date.desc()).limit(10).all()
-    return templates.TemplateResponse("match_maker.html", {"request": request, "user": admin, "players": players,
-                                                           "recent_matches": recent_matches})
+    return templates.TemplateResponse("match_maker.html", {
+        "request": request,
+        "user": admin,
+        "players": players,
+        "recent_matches": recent_matches
+    })
 
 
 @app.get("/matches/", response_model=List[schemas.Match], name="get_matches_api", tags=["api_match"])
@@ -368,14 +485,12 @@ def create_match_api(payload: schemas.MatchCreate, db: Session = Depends(get_db)
                      admin: models.User = Depends(login_required)):
     player_ids = payload.player_ids
     if len(player_ids) != 10:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="정확히 10명의 플레이어가 필요합니다.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="정확히 10명의 플레이어가 필요합니다.")
 
     players_in_db = db.query(models.Player).filter(models.Player.id.in_(player_ids)).all()
     if len(players_in_db) != 10:
         missing_ids = set(player_ids) - {p.id for p in players_in_db}
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"일부 플레이어 ID를 찾을 수 없습니다: {list(missing_ids)}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"일부 플레이어 ID를 찾을 수 없습니다: {list(missing_ids)}")
 
     try:
         blue_team_ordered, red_team_ordered = balance_teams(players_in_db)
@@ -437,8 +552,7 @@ def create_match_api(payload: schemas.MatchCreate, db: Session = Depends(get_db)
     except Exception as e:
         db.rollback()
         traceback.print_exc()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"매치 저장 오류: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"매치 저장 오류: {str(e)}")
 
 
 @app.post("/matches/multi-group/", response_model=List[schemas.MatchWithTeams], name="create_multiple_matches_api",
@@ -448,6 +562,7 @@ def create_multiple_matches_api(payload: schemas.MatchCreate, db: Session = Depe
     player_ids = payload.player_ids
     num_players = len(player_ids)
     print(f"DEBUG: Multi-match API 호출됨, 플레이어 ID 수: {num_players}")
+
     if num_players == 0 or num_players % 10 != 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"플레이어 수는 10의 배수여야 합니다. 현재 {num_players}명.")
 
@@ -458,15 +573,14 @@ def create_multiple_matches_api(payload: schemas.MatchCreate, db: Session = Depe
                             detail=f"일부 플레이어 ID({len(missing_ids)}명)를 찾을 수 없습니다: {list(missing_ids)[:5]}")
 
     print(f"DEBUG: DB에서 찾은 플레이어 수: {len(all_players_in_db)}")
+
     try:
         player_groups = distribute_players_to_groups(all_players_in_db, group_size=10)
         print(f"DEBUG: 플레이어 그룹 분배 결과 (그룹 수: {len(player_groups)})")
-        # for grp_idx, grp in enumerate(player_groups):
-        #     print(f"  그룹 {grp_idx}: {[p.nickname for p in grp]}")
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"그룹 분배 오류: {str(e)}")
 
-    if not player_groups and num_players > 0:  # 그룹 분배 결과가 비어있다면 (distribute_players_to_groups가 [] 반환 시)
+    if not player_groups and num_players > 0:
         print(f"DEBUG: distribute_players_to_groups가 빈 리스트 반환 (플레이어 수: {num_players})")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="플레이어 그룹 분배에 실패했습니다 (결과 없음).")
 
@@ -487,46 +601,60 @@ def create_multiple_matches_api(payload: schemas.MatchCreate, db: Session = Depe
             print(f"ERROR: 그룹 {group_idx} 팀 밸런싱 중 오류: {str(e)}. 이 그룹 건너뜀.")
             traceback.print_exc()
             continue
-        except Exception as e_balance:  # 예상치 못한 오류
+        except Exception as e_balance:
             print(f"CRITICAL ERROR: 그룹 {group_idx} 팀 밸런싱 중 예상치 못한 오류: {str(e_balance)}. 이 그룹 건너뜀.")
             traceback.print_exc()
             continue
 
-        if not blue_team_ordered or not red_team_ordered:  # balance_teams가 빈 팀 반환 시
+        if not blue_team_ordered or not red_team_ordered:
             print(f"WARNING: 그룹 {group_idx}의 balance_teams 결과가 유효하지 않음 (팀이 비어있음). 건너뜀.")
             continue
 
         blue_avg_tier = sum(p.tier_score for p in blue_team_ordered) / 5 if blue_team_ordered else 0
         red_avg_tier = sum(p.tier_score for p in red_team_ordered) / 5 if red_team_ordered else 0
-        # ... (나머지 점수 계산 동일)
         blue_avg_match = sum(p.match_score for p in blue_team_ordered) / 5 if blue_team_ordered else 0
         red_avg_match = sum(p.match_score for p in red_team_ordered) / 5 if red_team_ordered else 0
         balance_val = abs(blue_avg_tier - red_avg_tier)
 
-        db_match_multi = models.Match(match_date=datetime.now(KST) + timedelta(seconds=group_idx),
-                                      blue_team_avg_score=blue_avg_tier, red_team_avg_score=red_avg_tier,
-                                      blue_team_match_score=blue_avg_match, red_team_match_score=red_avg_match,
-                                      balance_score=balance_val)
+        db_match_multi = models.Match(
+            match_date=datetime.now(KST) + timedelta(seconds=group_idx),
+            blue_team_avg_score=blue_avg_tier,
+            red_team_avg_score=red_avg_tier,
+            blue_team_match_score=blue_avg_match,
+            red_team_match_score=red_avg_match,
+            balance_score=balance_val
+        )
 
         try:
-            db.add(db_match_multi);
+            db.add(db_match_multi)
             db.flush()
-            for i, p in enumerate(blue_team_ordered): db.add(
-                models.TeamAssignment(team="BLUE", match_id=db_match_multi.id, player_id=p.id,
-                                      assigned_position=POSITIONS_ORDER[i]))
-            for i, p in enumerate(red_team_ordered): db.add(
-                models.TeamAssignment(team="RED", match_id=db_match_multi.id, player_id=p.id,
-                                      assigned_position=POSITIONS_ORDER[i]))
-            db.commit();
+            for i, p in enumerate(blue_team_ordered):
+                db.add(models.TeamAssignment(
+                    team="BLUE",
+                    match_id=db_match_multi.id,
+                    player_id=p.id,
+                    assigned_player_position=POSITIONS_ORDER[i]
+                ))
+            for i, p in enumerate(red_team_ordered):
+                db.add(models.TeamAssignment(
+                    team="RED",
+                    match_id=db_match_multi.id,
+                    player_id=p.id,
+                    assigned_player_position=POSITIONS_ORDER[i]
+                ))
+            db.commit()
             db.refresh(db_match_multi)
 
             match_schema = schemas.MatchWithTeams(
-                id=db_match_multi.id, match_date=db_match_multi.match_date,
+                id=db_match_multi.id,
+                match_date=db_match_multi.match_date,
                 blue_team_avg_score=db_match_multi.blue_team_avg_score,
                 red_team_avg_score=db_match_multi.red_team_avg_score,
                 blue_team_match_score=db_match_multi.blue_team_match_score,
-                red_team_match_score=db_match_multi.red_team_match_score, balance_score=db_match_multi.balance_score,
-                winner=db_match_multi.winner, is_completed=db_match_multi.is_completed,
+                red_team_match_score=db_match_multi.red_team_match_score,
+                balance_score=db_match_multi.balance_score,
+                winner=db_match_multi.winner,
+                is_completed=db_match_multi.is_completed,
                 blue_team=[schemas.Player.from_orm(p) for p in blue_team_ordered],
                 red_team=[schemas.Player.from_orm(p) for p in red_team_ordered]
             )
@@ -539,7 +667,6 @@ def create_multiple_matches_api(payload: schemas.MatchCreate, db: Session = Depe
 
     if not created_matches_with_teams and num_players > 0:
         print(f"DEBUG: 최종 생성된 매치 없음 (입력 플레이어 수: {num_players})")
-        # 이 메시지는 클라이언트에게 전달됨. 서버 로그에 더 자세한 원인 있어야 함.
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail="모든 그룹에 대한 매치 생성에 실패했습니다. 서버 로그를 확인하세요.")
 
@@ -562,11 +689,11 @@ async def match_detail_page(match_id: int, request: Request, admin: models.User 
     # 새 컬럼명 사용
     blue_team_info = [
         {"player": db.query(models.Player).get(ta.player_id),
-         "assigned_pos_value": ta.assigned_player_position.value} for ta  # assigned_position → assigned_player_position
+         "assigned_pos_value": ta.assigned_player_position.value} for ta
         in blue_assignments if db.query(models.Player).get(ta.player_id)]
     red_team_info = [
         {"player": db.query(models.Player).get(ta.player_id),
-         "assigned_pos_value": ta.assigned_player_position.value} for ta  # assigned_position → assigned_player_position
+         "assigned_pos_value": ta.assigned_player_position.value} for ta
         in red_assignments if db.query(models.Player).get(ta.player_id)]
 
     return templates.TemplateResponse("match_detail.html", {
@@ -583,13 +710,15 @@ async def match_detail_page(match_id: int, request: Request, admin: models.User 
           tags=["api_match"])
 def record_match_result_api(match_id: int, result_data: schemas.MatchResult, db: Session = Depends(get_db),
                             admin: models.User = Depends(login_required)):
-    if result_data.match_id != match_id: raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                                             detail="경로와 본문의 매치 ID 불일치.")
+    if result_data.match_id != match_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="경로와 본문의 매치 ID 불일치.")
     match = db.query(models.Match).filter(models.Match.id == match_id).first()
-    if not match: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="매치를 찾을 수 없습니다")
-    if match.is_completed: raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 결과가 등록된 매치입니다")
-    if result_data.winner not in ["BLUE", "RED"]: raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                                                      detail="승리 팀은 'BLUE' 또는 'RED'여야 합니다.")
+    if not match:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="매치를 찾을 수 없습니다")
+    if match.is_completed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 결과가 등록된 매치입니다")
+    if result_data.winner not in ["BLUE", "RED"]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="승리 팀은 'BLUE' 또는 'RED'여야 합니다.")
     if not update_team_match_scores(result_data.winner, match_id, db):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="매치 결과 처리 중 오류 발생.")
     db.refresh(match)
@@ -608,19 +737,32 @@ async def player_stats_page(request: Request, admin: models.User = Depends(login
     for p in players:
         total_games = p.win_count + p.lose_count
         win_rate = (p.win_count / total_games * 100) if total_games > 0 else 0
-        player_stats_data.append({"player": p, "total_games": total_games, "win_rate": win_rate,
-                                  "clean_position": p.position.value if p.position else "N/A",
-                                  "clean_sub_position": p.sub_position.value if p.sub_position else "없음",
-                                  "clean_tier": p.tier.value if p.tier else "N/A"})
+        player_stats_data.append({
+            "player": p,
+            "total_games": total_games,
+            "win_rate": win_rate,
+            "clean_position": p.position.value if p.position else "N/A",
+            "clean_sub_position": p.sub_position.value if p.sub_position else "없음",
+            "clean_tier": p.tier.value if p.tier else "N/A"
+        })
 
-    key_map = {"match_score": lambda x: x["player"].match_score, "total_games": lambda x: x["total_games"],
-               "win_rate": lambda x: x["win_rate"], "nickname": lambda x: x["player"].nickname.lower(),
-               "tier_score": lambda x: x["player"].tier_score}
-    if sort_by in key_map: player_stats_data.sort(key=key_map[sort_by], reverse=(order == "desc"))
+    key_map = {
+        "match_score": lambda x: x["player"].match_score,
+        "total_games": lambda x: x["total_games"],
+        "win_rate": lambda x: x["win_rate"],
+        "nickname": lambda x: x["player"].nickname.lower(),
+        "tier_score": lambda x: x["player"].tier_score
+    }
+    if sort_by in key_map:
+        player_stats_data.sort(key=key_map[sort_by], reverse=(order == "desc"))
 
-    return templates.TemplateResponse("player_stats.html",
-                                      {"request": request, "user": admin, "player_stats": player_stats_data,
-                                       "sort_by": sort_by, "order": order})
+    return templates.TemplateResponse("player_stats.html", {
+        "request": request,
+        "user": admin,
+        "player_stats": player_stats_data,
+        "sort_by": sort_by,
+        "order": order
+    })
 
 
 @app.get("/help", response_class=HTMLResponse, name="help_page")
@@ -631,14 +773,15 @@ async def help_page(request: Request, db: Session = Depends(get_db)):
 
 @app.post("/token", response_model=schemas.Token, tags=["api_auth"], name="api_login_for_token")
 async def login_for_access_token_api(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    if form_data.username != ADMIN_USER_ID: raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                                                                detail="관리자 아이디가 아닙니다.",
-                                                                headers={"WWW-Authenticate": "Bearer"})
+    if form_data.username != ADMIN_USER_ID:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="관리자 아이디가 아닙니다.",
+                            headers={"WWW-Authenticate": "Bearer"})
     user = authenticate_user(db, form_data.username, form_data.password)
-    if not user: raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="아이디 또는 비밀번호가 잘못되었습니다.",
-                                     headers={"WWW-Authenticate": "Bearer"})
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="아이디 또는 비밀번호가 잘못되었습니다.",
+                            headers={"WWW-Authenticate": "Bearer"})
 
-    # --- ADDED START: API Login Session Check ---
+    # API Login Session Check
     existing_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == user.id).first()
     if existing_session and existing_session.expires_at > datetime.utcnow():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="해당 계정은 이미 다른 곳에서 로그인되어 있습니다.")
@@ -652,24 +795,25 @@ async def login_for_access_token_api(form_data: OAuth2PasswordRequestForm = Depe
     new_session = models.ActiveSession(user_id=user.id, token=access_token, expires_at=expire_datetime)
     db.add(new_session)
     db.commit()
-    # --- ADDED END ---
 
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-# --- MODIFIED START: API Auth check logic ---
+# API Auth check logic
 async def get_current_api_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증 정보를 확인할 수 없습니다.",
                                           headers={"WWW-Authenticate": "Bearer"})
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id_from_token: Optional[str] = payload.get("sub")
-        if user_id_from_token is None: raise credentials_exception
+        if user_id_from_token is None:
+            raise credentials_exception
     except JWTError:
         raise credentials_exception
 
     user = get_user_from_db(db, user_id=user_id_from_token)
-    if user is None or user.user_id != ADMIN_USER_ID: raise credentials_exception
+    if user is None or user.user_id != ADMIN_USER_ID:
+        raise credentials_exception
 
     # DB의 활성 세션과 토큰 일치 여부 확인
     active_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == user.id).first()
@@ -677,9 +821,6 @@ async def get_current_api_user(token: str = Depends(oauth2_scheme), db: Session 
         raise credentials_exception
 
     return user
-
-
-# --- MODIFIED END ---
 
 
 @app.get("/api/users/me", response_model=schemas.User, tags=["api_auth"], name="api_read_current_user")
