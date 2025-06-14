@@ -64,6 +64,12 @@ def create_admin_user_on_startup(db: Session):
             db.rollback()
             print(f"Error creating admin user: {e}")
     elif not verify_password(ADMIN_PASSWORD, admin_user.hashed_password):
+        # --- MODIFIED START ---
+        # 비밀번호 변경 시 기존 세션도 삭제하여 재로그인 유도
+        existing_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == admin_user.id).first()
+        if existing_session:
+            db.delete(existing_session)
+        # --- MODIFIED END ---
         admin_user.hashed_password = get_password_hash(ADMIN_PASSWORD)
         try:
             db.commit()
@@ -111,17 +117,39 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+# --- MODIFIED START: Active Session Check Logic ---
 async def get_current_user_from_cookie(request: Request, db: Session = Depends(get_db)) -> Optional[models.User]:
     token = request.cookies.get("access_token")
     if not token or not token.startswith("Bearer "): return None
+
     token = token.replace("Bearer ", "")
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: Optional[str] = payload.get("sub")
-        if user_id is None: return None
+        user_id_from_token: Optional[str] = payload.get("sub")
+        if user_id_from_token is None: return None
     except JWTError:
         return None
-    return get_user_from_db(db, user_id=user_id)
+
+    user = get_user_from_db(db, user_id=user_id_from_token)
+    if not user:
+        return None
+
+    # DB에 저장된 활성 세션 정보와 쿠키의 토큰을 비교
+    active_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == user.id).first()
+
+    # 세션이 없거나, 토큰이 일치하지 않거나, 세션이 만료된 경우 -> 유효하지 않은 세션
+    if not active_session or active_session.token != token or active_session.expires_at < datetime.utcnow():
+        # 만료된 세션 데이터가 있다면 정리
+        if active_session and active_session.expires_at < datetime.utcnow():
+            db.delete(active_session)
+            db.commit()
+        return None
+
+    return user
+
+
+# --- MODIFIED END ---
 
 
 async def login_required(user: Optional[models.User] = Depends(get_current_user_from_cookie)):
@@ -149,16 +177,39 @@ async def login_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("login.html", {"request": request, "error": error_message})
 
 
+# --- MODIFIED START: Login Logic to handle Active Session ---
 @app.post("/login", name="login_form_submit")
 async def login_form_post(request: Request, user_id: str = Form(...), password: str = Form(...),
                           db: Session = Depends(get_db)):
     if user_id != ADMIN_USER_ID:
         return templates.TemplateResponse("login.html", {"request": request, "error": "관리자 아이디가 아닙니다."})
+
     user = authenticate_user(db, user_id, password)
     if not user:
         return templates.TemplateResponse("login.html", {"request": request, "error": "아이디 또는 비밀번호가 잘못되었습니다."})
+
+    # 로그인 시도 시, 이미 활성 세션이 있는지 확인
+    existing_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == user.id).first()
+    if existing_session:
+        # 만료된 세션이면 삭제하고 로그인 허용
+        if existing_session.expires_at < datetime.utcnow():
+            db.delete(existing_session)
+            db.commit()
+        else:
+            # 유효한 세션이 있으면 로그인 거부
+            return templates.TemplateResponse("login.html",
+                                              {"request": request, "error": "해당 계정은 이미 다른 기기에서 로그인되어 있습니다."})
+
+    # 새 세션 생성
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire_datetime = datetime.utcnow() + access_token_expires
     access_token = create_access_token(data={"sub": user.user_id}, expires_delta=access_token_expires)
+
+    # DB에 활성 세션 정보 저장
+    new_session = models.ActiveSession(user_id=user.id, token=access_token, expires_at=expire_datetime)
+    db.add(new_session)
+    db.commit()
+
     response = RedirectResponse(url=app.url_path_for("home"), status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True,
                         max_age=int(access_token_expires.total_seconds()), samesite="Lax",
@@ -166,11 +217,27 @@ async def login_form_post(request: Request, user_id: str = Form(...), password: 
     return response
 
 
+# --- MODIFIED END ---
+
+
+# --- MODIFIED START: Logout to clear Active Session ---
 @app.get("/logout", name="logout")
-async def logout(request: Request):
+async def logout(request: Request, db: Session = Depends(get_db)):
+    # 쿠키에서 토큰을 읽어와 DB의 세션 정보를 삭제
+    token_from_cookie = request.cookies.get("access_token")
+    if token_from_cookie:
+        token = token_from_cookie.replace("Bearer ", "")
+        session_to_delete = db.query(models.ActiveSession).filter(models.ActiveSession.token == token).first()
+        if session_to_delete:
+            db.delete(session_to_delete)
+            db.commit()
+
     response = RedirectResponse(url=app.url_path_for("login_page"), status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(key="access_token", samesite="Lax", secure=request.url.scheme == "https")
     return response
+
+
+# --- MODIFIED END ---
 
 
 @app.get("/player-management", response_class=HTMLResponse, name="player_management_page")
@@ -181,6 +248,7 @@ async def player_management_page(request: Request, admin: models.User = Depends(
                                                                  "Position": models.Position})
 
 
+# ... (이하 나머지 코드는 변경 없음, 그대로 유지) ...
 @app.post("/players/", response_model=schemas.Player, name="create_player_api", status_code=status.HTTP_201_CREATED,
           tags=["api_player"])
 def create_player_api(player: schemas.PlayerCreate, db: Session = Depends(get_db),
@@ -201,7 +269,7 @@ def create_player_api(player: schemas.PlayerCreate, db: Session = Depends(get_db
         db.rollback()
         detail_msg = "플레이어 저장 중 DB 제약조건 위반"
         if "UNIQUE constraint failed" in str(
-            e.orig).lower(): detail_msg = f"닉네임 '{player.nickname}' 또는 다른 고유 값이 이미 존재합니다."
+                e.orig).lower(): detail_msg = f"닉네임 '{player.nickname}' 또는 다른 고유 값이 이미 존재합니다."
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail_msg)
     except Exception as e:
         db.rollback();
@@ -233,10 +301,14 @@ def update_player_api(player_id: int, player_data: schemas.PlayerCreate, db: Ses
         db.refresh(player_in_db)
         return player_in_db
     except IntegrityError:
-        db.rollback(); raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                           detail=f"닉네임 '{player_data.nickname}' 또는 고유 값 중복.")
+        db.rollback();
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"닉네임 '{player_data.nickname}' 또는 고유 값 중복.")
     except Exception as e:
-        db.rollback(); print(f"플레이어 업데이트 중 예외: {e}"); traceback.print_exc(); raise HTTPException(
+        db.rollback();
+        print(f"플레이어 업데이트 중 예외: {e}");
+        traceback.print_exc();
+        raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="플레이어 업데이트 중 서버 오류")
 
 
@@ -251,7 +323,10 @@ def delete_player_api(player_id: int, db: Session = Depends(get_db), admin: mode
         db.commit()
         return {"message": f"플레이어 '{player.nickname}' (ID: {player_id}) 삭제 완료.", "player_id": player_id}
     except Exception as e:
-        db.rollback(); print(f"플레이어 삭제 중 예외: {e}"); traceback.print_exc(); raise HTTPException(
+        db.rollback();
+        print(f"플레이어 삭제 중 예외: {e}");
+        traceback.print_exc();
+        raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"플레이어 삭제 오류: {str(e)}")
 
 
@@ -316,8 +391,10 @@ def create_match_api(payload: schemas.MatchCreate, db: Session = Depends(get_db)
             red_team=[schemas.Player.from_orm(p) for p in red_team_ordered]
         )
     except Exception as e:
-        db.rollback(); traceback.print_exc(); raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                                                  detail=f"매치 저장 오류: {str(e)}")
+        db.rollback();
+        traceback.print_exc();
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"매치 저장 오류: {str(e)}")
 
 
 @app.post("/matches/multi-group/", response_model=List[schemas.MatchWithTeams], name="create_multiple_matches_api",
@@ -505,21 +582,49 @@ async def login_for_access_token_api(form_data: OAuth2PasswordRequestForm = Depe
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user: raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="아이디 또는 비밀번호가 잘못되었습니다.",
                                      headers={"WWW-Authenticate": "Bearer"})
-    return {"access_token": create_access_token(data={"sub": user.user_id}), "token_type": "bearer"}
+
+    # --- ADDED START: API Login Session Check ---
+    existing_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == user.id).first()
+    if existing_session and existing_session.expires_at > datetime.utcnow():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="해당 계정은 이미 다른 곳에서 로그인되어 있습니다.")
+    elif existing_session:
+        db.delete(existing_session)
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire_datetime = datetime.utcnow() + access_token_expires
+    access_token = create_access_token(data={"sub": user.user_id}, expires_delta=access_token_expires)
+
+    new_session = models.ActiveSession(user_id=user.id, token=access_token, expires_at=expire_datetime)
+    db.add(new_session)
+    db.commit()
+    # --- ADDED END ---
+
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
+# --- MODIFIED START: API Auth check logic ---
 async def get_current_api_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증 정보를 확인할 수 없습니다.",
                                           headers={"WWW-Authenticate": "Bearer"})
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: Optional[str] = payload.get("sub")
-        if user_id is None: raise credentials_exception
+        user_id_from_token: Optional[str] = payload.get("sub")
+        if user_id_from_token is None: raise credentials_exception
     except JWTError:
         raise credentials_exception
-    user = get_user_from_db(db, user_id=user_id)
+
+    user = get_user_from_db(db, user_id=user_id_from_token)
     if user is None or user.user_id != ADMIN_USER_ID: raise credentials_exception
+
+    # DB의 활성 세션과 토큰 일치 여부 확인
+    active_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == user.id).first()
+    if not active_session or active_session.token != token or active_session.expires_at < datetime.utcnow():
+        raise credentials_exception
+
     return user
+
+
+# --- MODIFIED END ---
 
 
 @app.get("/api/users/me", response_model=schemas.User, tags=["api_auth"], name="api_read_current_user")

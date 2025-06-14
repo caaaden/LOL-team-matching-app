@@ -36,22 +36,44 @@ class User(Base):
     user_id = Column(String, unique=True, index=True)
     hashed_password = Column(String)
 
+    # --- ADDED START ---
+    # 사용자와 활성 세션 간의 관계 설정
+    active_session = relationship("ActiveSession", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    # --- ADDED END ---
+
+
+# --- ADDED START ---
+# 활성 세션 모델 (동시 로그인 방지용)
+class ActiveSession(Base):
+    __tablename__ = "active_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # 한 명의 유저는 하나의 세션만 가질 수 있도록 unique=True 설정
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    token = Column(Text, nullable=False, unique=True)
+    expires_at = Column(DateTime, nullable=False)
+
+    user = relationship("User", back_populates="active_session")
+
+
+# --- ADDED END ---
+
 
 # 플레이어 모델
 class Player(Base):
     __tablename__ = "players"
 
     id = Column(Integer, primary_key=True, index=True)
-    nickname = Column(String, index=True) # 닉네임 중복 가능하도록 unique=False 또는 별도 처리
+    nickname = Column(String, index=True)  # 닉네임 중복 가능하도록 unique=False 또는 별도 처리
     tier = Column(Enum(Tier), default=Tier.SILVER)
     division = Column(Integer, default=4)
     position = Column(Enum(Position))  # 주 포지션
     sub_position = Column(Enum(Position), nullable=True)  # 부 포지션, 선택 사항
     lp = Column(Integer, default=0)
     tier_score = Column(Float, default=0.0)
-    match_score = Column(Float, default=1000.0) # 초기값은 tier_score와 동기화 될 수 있음
-    win_count = Column(Integer, default=0) # 전체 승리
-    lose_count = Column(Integer, default=0) # 전체 패배
+    match_score = Column(Float, default=1000.0)  # 초기값은 tier_score와 동기화 될 수 있음
+    win_count = Column(Integer, default=0)  # 전체 승리
+    lose_count = Column(Integer, default=0)  # 전체 패배
     created_at = Column(DateTime, default=datetime.utcnow)
 
     team_assignments = relationship("TeamAssignment", back_populates="player")
@@ -65,12 +87,12 @@ class Match(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     match_date = Column(DateTime, default=lambda: datetime.now(timezone(timedelta(hours=9))))
-    blue_team_avg_score = Column(Float) # tier_score 평균
+    blue_team_avg_score = Column(Float)  # tier_score 평균
     red_team_avg_score = Column(Float)  # tier_score 평균
-    blue_team_match_score = Column(Float) # match_score 평균
+    blue_team_match_score = Column(Float)  # match_score 평균
     red_team_match_score = Column(Float)  # match_score 평균
-    balance_score = Column(Float) # abs(blue_team_avg_score - red_team_avg_score)
-    winner = Column(String, nullable=True) # "BLUE" or "RED"
+    balance_score = Column(Float)  # abs(blue_team_avg_score - red_team_avg_score)
+    winner = Column(String, nullable=True)  # "BLUE" or "RED"
     is_completed = Column(Boolean, default=False)
 
     team_assignments = relationship("TeamAssignment", back_populates="match")
@@ -82,7 +104,7 @@ class TeamAssignment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     team = Column(String)  # "BLUE" or "RED"
-    assigned_position = Column(Enum(Position), nullable=False) # 플레이어가 배정된 실제 라인
+    assigned_position = Column(Enum(Position), nullable=False)  # 플레이어가 배정된 실제 라인
 
     match_id = Column(Integer, ForeignKey("matches.id"))
     player_id = Column(Integer, ForeignKey("players.id"))
