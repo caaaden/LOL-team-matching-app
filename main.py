@@ -1,4 +1,4 @@
-# main.py
+# main.py 상단 부분 - import 수정
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, Body, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -13,7 +13,7 @@ from passlib.context import CryptContext
 import os
 import uvicorn
 import math
-import traceback  # traceback 추가
+import traceback
 
 from database import SessionLocal, engine, Base
 import models
@@ -257,23 +257,34 @@ def create_player_api(player: schemas.PlayerCreate, db: Session = Depends(get_db
     if existing_player:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 사용 중인 닉네임입니다.")
     tier_score = calculate_tier_score(player.tier, player.division, player.lp)
-    db_player = models.Player(nickname=player.nickname, tier=player.tier, division=player.division,
-                              position=player.position, sub_position=player.sub_position, lp=player.lp,
-                              tier_score=tier_score, match_score=tier_score, win_count=0, lose_count=0)
+
+    # 컬럼명 변경에 맞춘 수정
+    db_player = models.Player(
+        nickname=player.nickname,
+        tier=player.tier,
+        division=player.division,
+        player_position=player.position,  # position → player_position
+        sub_position=player.sub_position,
+        lp=player.lp,
+        tier_score=tier_score,
+        match_score=tier_score,
+        win_count=0,
+        lose_count=0
+    )
     try:
-        db.add(db_player);
-        db.commit();
+        db.add(db_player)
+        db.commit()
         db.refresh(db_player)
-        return db_player
+        return schemas.Player.from_orm(db_player)  # 커스텀 from_orm 사용
     except IntegrityError as e:
         db.rollback()
         detail_msg = "플레이어 저장 중 DB 제약조건 위반"
-        if "UNIQUE constraint failed" in str(
-                e.orig).lower(): detail_msg = f"닉네임 '{player.nickname}' 또는 다른 고유 값이 이미 존재합니다."
+        if "UNIQUE constraint failed" in str(e.orig).lower():
+            detail_msg = f"닉네임 '{player.nickname}' 또는 다른 고유 값이 이미 존재합니다."
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail_msg)
     except Exception as e:
-        db.rollback();
-        print(f"플레이어 저장 중 예외: {e}");
+        db.rollback()
+        print(f"플레이어 저장 중 예외: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="플레이어 저장 중 서버 오류")
 
@@ -282,34 +293,40 @@ def create_player_api(player: schemas.PlayerCreate, db: Session = Depends(get_db
 def update_player_api(player_id: int, player_data: schemas.PlayerCreate, db: Session = Depends(get_db),
                       admin: models.User = Depends(login_required)):
     player_in_db = db.query(models.Player).filter(models.Player.id == player_id).first()
-    if not player_in_db: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="플레이어를 찾을 수 없습니다")
+    if not player_in_db:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="플레이어를 찾을 수 없습니다")
+
     if player_data.nickname != player_in_db.nickname:
         if db.query(models.Player).filter(models.Player.nickname == player_data.nickname,
                                           models.Player.id != player_id).first():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail=f"닉네임 '{player_data.nickname}'은(는) 이미 사용 중입니다.")
+
     tier_score = calculate_tier_score(player_data.tier, player_data.division, player_data.lp)
-    player_in_db.nickname = player_data.nickname;
-    player_in_db.tier = player_data.tier;
+
+    # 컬럼명 변경에 맞춘 수정
+    player_in_db.nickname = player_data.nickname
+    player_in_db.tier = player_data.tier
     player_in_db.division = player_data.division
-    player_in_db.position = player_data.position;
-    player_in_db.sub_position = player_data.sub_position;
+    player_in_db.player_position = player_data.position  # position → player_position
+    player_in_db.sub_position = player_data.sub_position
     player_in_db.lp = player_data.lp
     player_in_db.tier_score = tier_score
+
     try:
-        db.commit();
+        db.commit()
         db.refresh(player_in_db)
-        return player_in_db
+        return schemas.Player.from_orm(player_in_db)  # 커스텀 from_orm 사용
     except IntegrityError:
-        db.rollback();
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"닉네임 '{player_data.nickname}' 또는 고유 값 중복.")
     except Exception as e:
-        db.rollback();
-        print(f"플레이어 업데이트 중 예외: {e}");
-        traceback.print_exc();
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="플레이어 업데이트 중 서버 오류")
+        db.rollback()
+        print(f"플레이어 업데이트 중 예외: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="플레이어 업데이트 중 서버 오류")
 
 
 @app.delete("/players/{player_id}", name="delete_player_api", status_code=status.HTTP_200_OK, tags=["api_player"])
@@ -350,12 +367,16 @@ def get_matches_api(db: Session = Depends(get_db), admin: models.User = Depends(
 def create_match_api(payload: schemas.MatchCreate, db: Session = Depends(get_db),
                      admin: models.User = Depends(login_required)):
     player_ids = payload.player_ids
-    if len(player_ids) != 10: raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                                  detail="정확히 10명의 플레이어가 필요합니다.")
+    if len(player_ids) != 10:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="정확히 10명의 플레이어가 필요합니다.")
+
     players_in_db = db.query(models.Player).filter(models.Player.id.in_(player_ids)).all()
     if len(players_in_db) != 10:
         missing_ids = set(player_ids) - {p.id for p in players_in_db}
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"일부 플레이어 ID를 찾을 수 없습니다: {list(missing_ids)}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"일부 플레이어 ID를 찾을 수 없습니다: {list(missing_ids)}")
+
     try:
         blue_team_ordered, red_team_ordered = balance_teams(players_in_db)
     except ValueError as e:
@@ -366,33 +387,56 @@ def create_match_api(payload: schemas.MatchCreate, db: Session = Depends(get_db)
     blue_avg_match = sum(p.match_score for p in blue_team_ordered) / 5 if blue_team_ordered else 0
     red_avg_match = sum(p.match_score for p in red_team_ordered) / 5 if red_team_ordered else 0
     balance_val = abs(blue_avg_tier - red_avg_tier)
+
     KST = timezone(timedelta(hours=9))
-    db_match = models.Match(blue_team_avg_score=blue_avg_tier, red_team_avg_score=red_avg_tier,
-                            blue_team_match_score=blue_avg_match, red_team_match_score=red_avg_match,
-                            balance_score=balance_val, match_date=datetime.now(KST))
+    db_match = models.Match(
+        blue_team_avg_score=blue_avg_tier,
+        red_team_avg_score=red_avg_tier,
+        blue_team_match_score=blue_avg_match,
+        red_team_match_score=red_avg_match,
+        balance_score=balance_val,
+        match_date=datetime.now(KST)
+    )
+
     try:
-        db.add(db_match);
+        db.add(db_match)
         db.flush()
-        for i, p in enumerate(blue_team_ordered): db.add(
-            models.TeamAssignment(team="BLUE", match_id=db_match.id, player_id=p.id,
-                                  assigned_position=POSITIONS_ORDER[i]))
-        for i, p in enumerate(red_team_ordered): db.add(
-            models.TeamAssignment(team="RED", match_id=db_match.id, player_id=p.id,
-                                  assigned_position=POSITIONS_ORDER[i]))
-        db.commit();
+
+        # 팀 배정 시 새 컬럼명 사용
+        for i, p in enumerate(blue_team_ordered):
+            db.add(models.TeamAssignment(
+                team="BLUE",
+                match_id=db_match.id,
+                player_id=p.id,
+                assigned_player_position=POSITIONS_ORDER[i]  # assigned_position → assigned_player_position
+            ))
+        for i, p in enumerate(red_team_ordered):
+            db.add(models.TeamAssignment(
+                team="RED",
+                match_id=db_match.id,
+                player_id=p.id,
+                assigned_player_position=POSITIONS_ORDER[i]  # assigned_position → assigned_player_position
+            ))
+
+        db.commit()
         db.refresh(db_match)
+
         return schemas.MatchWithTeams(
-            id=db_match.id, match_date=db_match.match_date, blue_team_avg_score=db_match.blue_team_avg_score,
+            id=db_match.id,
+            match_date=db_match.match_date,
+            blue_team_avg_score=db_match.blue_team_avg_score,
             red_team_avg_score=db_match.red_team_avg_score,
-            blue_team_match_score=db_match.blue_team_match_score, red_team_match_score=db_match.red_team_match_score,
+            blue_team_match_score=db_match.blue_team_match_score,
+            red_team_match_score=db_match.red_team_match_score,
             balance_score=db_match.balance_score,
-            winner=db_match.winner, is_completed=db_match.is_completed,
+            winner=db_match.winner,
+            is_completed=db_match.is_completed,
             blue_team=[schemas.Player.from_orm(p) for p in blue_team_ordered],
             red_team=[schemas.Player.from_orm(p) for p in red_team_ordered]
         )
     except Exception as e:
-        db.rollback();
-        traceback.print_exc();
+        db.rollback()
+        traceback.print_exc()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail=f"매치 저장 오류: {str(e)}")
 
@@ -507,21 +551,32 @@ def create_multiple_matches_api(payload: schemas.MatchCreate, db: Session = Depe
 async def match_detail_page(match_id: int, request: Request, admin: models.User = Depends(login_required),
                             db: Session = Depends(get_db)):
     match = db.query(models.Match).filter(models.Match.id == match_id).first()
-    if not match: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="매치를 찾을 수 없습니다")
+    if not match:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="매치를 찾을 수 없습니다")
+
     blue_assignments = db.query(models.TeamAssignment).filter_by(match_id=match_id, team="BLUE").order_by(
         models.TeamAssignment.id).all()
     red_assignments = db.query(models.TeamAssignment).filter_by(match_id=match_id, team="RED").order_by(
         models.TeamAssignment.id).all()
+
+    # 새 컬럼명 사용
     blue_team_info = [
-        {"player": db.query(models.Player).get(ta.player_id), "assigned_pos_value": ta.assigned_position.value} for ta
+        {"player": db.query(models.Player).get(ta.player_id),
+         "assigned_pos_value": ta.assigned_player_position.value} for ta  # assigned_position → assigned_player_position
         in blue_assignments if db.query(models.Player).get(ta.player_id)]
     red_team_info = [
-        {"player": db.query(models.Player).get(ta.player_id), "assigned_pos_value": ta.assigned_position.value} for ta
+        {"player": db.query(models.Player).get(ta.player_id),
+         "assigned_pos_value": ta.assigned_player_position.value} for ta  # assigned_position → assigned_player_position
         in red_assignments if db.query(models.Player).get(ta.player_id)]
-    return templates.TemplateResponse("match_detail.html", {"request": request, "user": admin, "match": match,
-                                                            "blue_team_info": blue_team_info,
-                                                            "red_team_info": red_team_info,
-                                                            "positions_order": [p.value for p in POSITIONS_ORDER]})
+
+    return templates.TemplateResponse("match_detail.html", {
+        "request": request,
+        "user": admin,
+        "match": match,
+        "blue_team_info": blue_team_info,
+        "red_team_info": red_team_info,
+        "positions_order": [p.value for p in POSITIONS_ORDER]
+    })
 
 
 @app.post("/match/{match_id}/result", name="record_match_result_api", status_code=status.HTTP_200_OK,

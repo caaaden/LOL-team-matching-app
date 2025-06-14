@@ -1,4 +1,4 @@
-# schemas.py
+# schemas.py - PostgreSQL 예약어 충돌 해결 버전
 from pydantic import BaseModel, validator, ConfigDict
 from typing import List, Optional
 from datetime import datetime
@@ -49,8 +49,8 @@ class PlayerBase(BaseModel):
     nickname: str
     tier: TierEnum
     division: int
-    position: PositionEnum  # 주 포지션
-    sub_position: Optional[PositionEnum] = None  # 부 포지션
+    position: PositionEnum  # API에서는 여전히 position으로 사용 (내부적으로 player_position으로 매핑)
+    sub_position: Optional[PositionEnum] = None
     lp: Optional[int] = 0
 
     @validator('division', pre=True, always=True)
@@ -77,11 +77,6 @@ class PlayerBase(BaseModel):
             if v and main_position == v and main_position != PositionEnum.ALL:
                 raise ValueError('주 포지션과 부 포지션은 같을 수 없습니다 (ALL 제외).')
 
-            # 주 포지션이 ALL이면 부 포지션은 없어야 함 (UI에서 제어하므로, API 레벨에서는 선택적)
-            # if main_position == PositionEnum.ALL and v is not None:
-            #     # UI에서 주 포지션이 ALL이면 부 포지션을 '' (None)으로 보내므로 이 검사는 통과됨
-            #     # 만약 값을 보낸다면 여기서 에러 발생
-            #     raise ValueError("주 포지션이 'ALL'이면 부 포지션을 선택할 수 없습니다.")
         return v
 
 
@@ -97,6 +92,26 @@ class Player(PlayerBase):
     lose_count: int
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+    # models.py의 player_position을 position으로 매핑
+    @classmethod
+    def from_orm(cls, obj):
+        """ORM 객체를 스키마로 변환할 때 필드명 매핑"""
+        data = {
+            'id': obj.id,
+            'nickname': obj.nickname,
+            'tier': obj.tier,
+            'division': obj.division,
+            'position': obj.player_position,  # player_position → position 매핑
+            'sub_position': obj.sub_position,
+            'lp': obj.lp,
+            'tier_score': obj.tier_score,
+            'match_score': obj.match_score,
+            'win_count': obj.win_count,
+            'lose_count': obj.lose_count,
+            'created_at': obj.created_at
+        }
+        return cls(**data)
 
 
 class TeamAssignmentBase(BaseModel):
