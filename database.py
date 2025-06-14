@@ -1,4 +1,4 @@
-# database.py - 메모리 누수 방지 최적화 버전
+# database.py - Neon PostgreSQL 호환성 수정 버전
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 import os
@@ -24,26 +24,26 @@ except ValueError:
     print("🔄 기본 포트 5432를 사용합니다...")
     port_int = 5432
 
-# 메모리 누수 방지를 위한 최적화된 연결 설정
+# Neon 호환성을 위한 연결 설정 (문제 파라미터 제거)
 DATABASE_URL = f"postgresql+psycopg2://{USER}:{PASSWORD}@{HOST}:{port_int}/{DBNAME}?sslmode=require"
 
 try:
-    # 메모리 효율적인 엔진 설정 (Render 무료 플랜 최적화)
+    # Neon에 최적화된 엔진 설정 (호환성 문제 해결)
     engine = create_engine(
         DATABASE_URL,
         # 연결 풀 크기 최적화 (메모리 사용량 줄이기)
-        pool_size=2,  # 기본 연결 수 (기존 5 → 2)
-        max_overflow=3,  # 추가 연결 수 (기존 10 → 3)
+        pool_size=2,  # 기본 연결 수
+        max_overflow=3,  # 추가 연결 수
         pool_timeout=20,  # 연결 대기 시간
         pool_recycle=1800,  # 30분마다 연결 재생성 (메모리 정리)
         pool_pre_ping=True,  # 연결 상태 확인
 
-        # 연결 최적화
+        # Neon 호환성을 위한 연결 설정 (문제 파라미터 제거)
         connect_args={
             "application_name": "lol_team_matcher",
             "connect_timeout": 10,
-            # PostgreSQL 특정 최적화
-            "options": "-c default_transaction_isolation=read_committed"
+            # ❌ 제거: "options": "-c default_transaction_isolation=read_committed"
+            # Neon의 connection pooling 모드에서는 이 옵션이 지원되지 않음
         },
 
         # 로깅 최소화 (메모리 절약)
