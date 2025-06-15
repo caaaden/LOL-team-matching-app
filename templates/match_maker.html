@@ -8,7 +8,7 @@
 </head>
 <body class="bg-gray-100 font-sans">
 
-    <!-- 삭제 확인 모달 -->
+    <!-- 삭제 확인 모달 (기존과 동일) -->
     <div id="deleteConfirmModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden transition-opacity duration-300 ease-in-out" aria-labelledby="modal-title" role="dialog" aria-modal="true">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 transform transition-all duration-300 ease-in-out scale-95 opacity-0">
             <div class="p-6">
@@ -46,10 +46,17 @@
         <p class="text-center text-gray-500 mb-8">매칭할 플레이어를 선택하세요 (10명 단위)</p>
 
         <div class="mb-6 p-6 bg-slate-50 border border-slate-200 rounded-lg">
-            <div class="flex justify-between items-center mb-4">
+            <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-2">
                 <h2 class="text-2xl font-semibold text-gray-700">플레이어 선택</h2>
                 <div class="text-lg font-bold text-blue-600">선택된 플레이어: <span id="selectedCount">0</span>명</div>
             </div>
+
+            <!-- ### 검색 기능 추가 ### -->
+            <div class="mb-4">
+                <input type="text" id="playerSearchInput" placeholder="플레이어 닉네임으로 검색..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <!-- #################### -->
+
             <div id="playerSelection" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                 {% for player in players %}
                     <div class="player-card p-3 border border-gray-200 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md hover:border-blue-400" data-id="{{ player.id }}">
@@ -134,6 +141,7 @@
         </div>
     </div>
 
+    <!-- ### 스크립트 수정 ### -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const playerCards = document.querySelectorAll('.player-card');
@@ -141,9 +149,29 @@
             const createMatchBtn = document.getElementById('createMatchBtn');
             const multiMatchResultsDiv = document.getElementById('multiMatchResults');
             const multiMatchLinksDiv = document.getElementById('multiMatchLinks');
+            const playerSearchInput = document.getElementById('playerSearchInput'); // 검색창 요소 가져오기
 
             let selectedPlayers = [];
             const minPlayersRequired = 10;
+
+            // 플레이어 목록 필터링 함수
+            function filterPlayers() {
+                const searchTerm = playerSearchInput.value.toLowerCase().trim();
+                playerCards.forEach(card => {
+                    const nickname = card.querySelector('h3').textContent.toLowerCase();
+                    const isSelected = card.classList.contains('selected');
+
+                    // 검색어와 일치하거나, 이미 선택된 플레이어는 보이게 처리
+                    if (nickname.includes(searchTerm) || isSelected) {
+                        card.classList.remove('hidden');
+                    } else {
+                        card.classList.add('hidden');
+                    }
+                });
+            }
+
+            // 검색창에 입력할 때마다 필터링 함수 호출
+            playerSearchInput.addEventListener('input', filterPlayers);
 
             function updateCreateMatchButtonState() {
                 const numSelected = selectedPlayers.length;
@@ -176,6 +204,7 @@
 
                     selectedCountSpan.textContent = selectedPlayers.length;
                     updateCreateMatchButtonState();
+                    filterPlayers(); // 선택/해제 시에도 필터링을 다시 적용하여 UI 일관성 유지
                 });
             });
 

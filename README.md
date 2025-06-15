@@ -1,193 +1,223 @@
-# LoL 팀 생성기 (lol_team_generator)
+# 롤이터 - LoL 팀 매칭 시스템
 
-리그 오브 레전드 내전(스크림) 시 균형 있는 팀을 자동으로 구성하고, 경기 결과를 기록 및 관리하여 플레이어들의 실력 지표(매칭 점수)를 추적하는 웹 애플리케이션입니다.
+리그 오브 레전드 클랜 내전을 위한 자동 팀 밸런싱 및 결과 관리 시스템입니다.
 
-## 📋 목차
+## 🎮 주요 기능
 
-- [주요 기능](#-주요-기능)
-- [기술 스택](#️-기술-스택)
-- [프로젝트 구조](#-프로젝트-구조)
-- [설치 및 실행](#-설치-및-실행)
-- [사용 방법](#-사용-방법)
-- [주요 로직 설명](#-주요-로직-설명)
-- [향후 개선 사항](#-향후-개선-사항)
+- **플레이어 관리**: 클랜원의 티어, 포지션, 실력 정보 등록 및 관리
+- **자동 팀 매칭**: 10명의 플레이어를 실력과 포지션을 고려하여 균형있는 두 팀으로 자동 분배
+- **매치 결과 관리**: 경기 결과 기록 및 승패에 따른 개인 점수 업데이트
+- **통계 시스템**: 플레이어별 전적, 승률, 매칭 점수 통계 제공
+- **멀티 매치**: 20명, 30명 등 다수 인원에 대한 여러 매치 동시 생성
 
-## ✨ 주요 기능
+## 🛠️ 기술 스택
 
-### 관리자 인증
-- 보안된 관리자 로그인을 통한 시스템 접근 제어
+- **Backend**: FastAPI, SQLAlchemy
+- **Database**: PostgreSQL (배포) / SQLite (개발)
+- **Frontend**: Jinja2 Templates, Tailwind CSS
+- **Authentication**: JWT, Passlib
+- **Deployment**: uvicorn, 환경변수 기반 설정
+
+## 🔧 팀 밸런싱 알고리즘
+
+시스템은 다음 요소들을 종합적으로 고려하여 최적의 팀을 구성합니다:
+
+1. **티어 점수**: 각 플레이어의 랭크 티어를 점수화
+2. **포지션 적합도**: 주/부 포지션 선호도 반영
+3. **매칭 점수**: 실제 경기 결과를 반영한 동적 점수
+4. **밸런스 최적화**: 두 팀 간 실력 차이 최소화
+
+### 점수 시스템
+
+- **승리 시**: +25~35점 (포지션 선호도에 따라 차등)
+- **패배 시**: -20~30점 (포지션 선호도에 따라 차등)
+- **포지션별 가중치**: 주 포지션 > 부 포지션 > 비선호 포지션
+
+## 📦 설치 및 실행
+
+### 1. 프로젝트 클론
+
+```bash
+git clone <repository-url>
+cd lol-team-matcher
+```
+
+### 2. 가상환경 생성 및 활성화
+
+```bash
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+```
+
+### 3. 의존성 설치
+
+```bash
+pip install fastapi uvicorn sqlalchemy psycopg2-binary python-dotenv
+pip install python-multipart jinja2 python-jose[cryptography] passlib[bcrypt]
+pip install psutil  # 메모리 모니터링용
+```
+
+### 4. 환경변수 설정
+
+`.env` 파일 생성:
+
+```env
+# 개발 환경
+APP_ENV=development
+
+# 배포 환경용 (필요시)
+APP_ENV=production
+user=your_db_user
+password=your_db_password
+host=your_db_host
+port=5432
+dbname=your_db_name
+
+# JWT 설정
+SECRET_KEY=your-super-secret-key-here
+ADMIN_USER_ID=admin
+ADMIN_PASSWORD=your-admin-password
+```
+
+### 5. 애플리케이션 실행
+
+```bash
+# 개발 환경 (SQLite 사용)
+python main.py
+
+# 또는 uvicorn 직접 실행
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+애플리케이션이 `http://localhost:8000`에서 실행됩니다.
+
+## 🗃️ 데이터베이스 구조
+
+### 주요 테이블
+
+- **users**: 관리자 사용자 정보
+- **active_sessions**: 활성 세션 관리 (동시 로그인 방지)
+- **players**: 플레이어 정보 (닉네임, 티어, 포지션, 점수 등)
+- **matches**: 매치 정보 (일시, 팀 평균 점수, 밸런스 점수 등)
+- **team_assignments**: 매치별 팀 배정 정보
+
+### 데이터베이스 초기화
+
+애플리케이션 첫 실행 시 자동으로:
+- 테이블 생성
+- 관리자 계정 생성 (`admin` / 환경변수의 비밀번호)
+
+## 🎯 사용 방법
+
+### 1. 관리자 로그인
+- 메인 페이지에서 "관리자 로그인" 클릭
+- ID: `admin`, 비밀번호: 환경변수에 설정한 값
+
+### 2. 플레이어 등록
+- "플레이어 관리" 메뉴에서 새 플레이어 등록
+- 닉네임, 티어, 주/부 포지션 입력
+
+### 3. 팀 매칭
+- "팀 매칭 및 결과 기록" 메뉴에서 참여자 10명 선택
+- "팀 매칭 시작" 버튼으로 자동 팀 생성
+
+### 4. 결과 입력
+- 매치 상세 페이지에서 승리 팀 선택
+- 자동으로 개인 점수 업데이트
+
+### 5. 통계 확인
+- "플레이어 통계" 메뉴에서 전체 플레이어 성과 확인
+- 매칭 점수, 승률 등으로 정렬 가능
+
+## 🚀 배포
+
+### 환경변수 설정
+
+배포 환경에서는 `APP_ENV=production`으로 설정하고 PostgreSQL 연결 정보를 제공해야 합니다.
+
+```env
+APP_ENV=production
+user=production_db_user
+password=production_db_password
+host=production_db_host
+port=5432
+dbname=production_db_name
+SECRET_KEY=production-secret-key
+ADMIN_PASSWORD=secure-admin-password
+```
+
+### 성능 최적화
+
+- 메모리 사용량 모니터링 및 자동 정리
+- 만료된 세션 자동 삭제
+- 데이터베이스 연결 풀링
+- GZip 압축 지원
+
+## 📊 API 엔드포인트
+
+### 인증
+- `POST /token`: API 토큰 발급
+- `POST /login`: 웹 로그인
+- `GET /logout`: 로그아웃
 
 ### 플레이어 관리
-- 플레이어 닉네임, 티어(세부 디비전 및 LP/점수 포함), 주 포지션, 부 포지션 등록/수정/삭제
-- 플레이어별 초기 티어 점수 자동 계산
+- `POST /players/`: 플레이어 등록
+- `PUT /players/{player_id}`: 플레이어 정보 수정
+- `DELETE /players/{player_id}`: 플레이어 삭제
 
-### 팀 자동 매칭
-- 등록된 플레이어 중 10명을 선택하여 자동 팀 매칭
-- 플레이어의 티어 점수와 포지션 선호도를 종합적으로 고려
-- 5개 고정 라인(TOP, JUNGLE, MID, ADC, SUPPORT)에 최적 배정
-- 두 팀 간의 티어 점수 평균 차이 최소화
+### 매치 관리
+- `POST /match/`: 단일 매치 생성 (10명)
+- `POST /matches/multi-group/`: 다중 매치 생성 (10의 배수)
+- `POST /match/{match_id}/result`: 매치 결과 등록
+- `DELETE /match/{match_id}`: 미완료 매치 삭제
 
-### 경기 결과 기록
-- 생성된 매치에 대한 승리 팀(블루/레드) 기록
-- 경기 결과 및 배정 포지션에 따른 플레이어 '매칭 점수' 차등 업데이트
+## 🔒 보안 기능
 
-### 플레이어 통계
-- 플레이어별 매칭 점수, 총 게임 수, 승/패, 승률 등 통계 제공
-- 다양한 기준으로 정렬 조회 가능
+- JWT 기반 인증
+- 관리자 전용 액세스
+- 동시 로그인 방지
+- 세션 만료 관리
+- CSRF 보호 (SameSite 쿠키)
 
-### 최근 매치 목록
-- 최근 생성된 매치 목록 확인
-- 상세 정보 및 결과 입력 페이지 이동
+## 📱 반응형 디자인
 
-## ⚙️ 기술 스택
+모든 페이지는 Tailwind CSS를 사용하여 모바일, 태블릿, 데스크톱에서 최적화된 화면을 제공합니다.
 
-- **Backend**: Python, FastAPI
-- **Database**: SQLite (SQLAlchemy ORM)
-- **Frontend**: HTML, CSS, JavaScript (Jinja2 템플릿)
-- **Authentication**: JWT (python-jose), Passlib (bcrypt)
-- **Server**: Uvicorn
+## 🐛 문제 해결
 
-## 📁 프로젝트 구조
+### 일반적인 문제
 
-```
-lol_team_generator/
-├── static/                     # 정적 파일
-│   └── css/
-│       └── style.css
-├── templates/                  # HTML 템플릿
-│   ├── help.html              # 도움말 페이지
-│   ├── index.html             # 메인 대시보드
-│   ├── login.html             # 관리자 로그인
-│   ├── match_detail.html      # 매치 상세/결과 기록
-│   ├── match_maker.html       # 팀 매칭/최근 매치
-│   ├── player_management.html # 플레이어 관리
-│   └── player_stats.html      # 플레이어 통계
-├── database.py                # 데이터베이스 설정
-├── main.py                    # FastAPI 애플리케이션
-├── models.py                  # 데이터베이스 모델
-├── schemas.py                 # Pydantic 스키마
-└── utils.py                   # 유틸리티 함수
-```
+1. **데이터베이스 연결 오류**
+   - 환경변수 설정 확인
+   - 데이터베이스 서버 상태 확인
 
-## 🚀 설치 및 실행
+2. **포트 충돌**
+   - `PORT` 환경변수로 다른 포트 지정
 
-### 사전 요구 사항
-- Python 3.8 이상
-- pip (Python 패키지 관리자)
+3. **메모리 부족**
+   - 시스템이 자동으로 메모리를 모니터링하고 정리
+   - 로그에서 메모리 사용량 확인 가능
 
-### 실행 방법
+### 로그 확인
 
-1. **프로젝트 클론**
-   ```bash
-   git clone <repository_url>
-   cd lol_team_generator
-   ```
+애플리케이션은 상세한 로그를 제공합니다:
+- 데이터베이스 연결 상태
+- 메모리 사용량
+- 세션 관리 상태
+- API 호출 결과
 
-2. **가상 환경 생성 및 활성화 (권장)**
-   ```bash
-   python -m venv venv
-   
-   # Linux/macOS
-   source venv/bin/activate
-   
-   # Windows
-   venv\Scripts\activate
-   ```
+## 📄 라이선스
 
-3. **필요한 패키지 설치**
-   ```bash
-   pip install fastapi uvicorn sqlalchemy python-jose passlib jinja2 pydantic bcrypt python-multipart
-   ```
+이 프로젝트는 MIT 라이선스 하에 배포됩니다.
 
-4. **환경 변수 설정 (선택사항)**
-   ```env
-   SECRET_KEY="your_very_secret_jwt_key"
-   ADMIN_USER_ID="myadmin"
-   ADMIN_PASSWORD="mysecretpassword"
-   ```
+## 🤝 기여하기
 
-5. **애플리케이션 실행**
-   ```bash
-   uvicorn main:app --reload
-   ```
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-6. **브라우저 접속**
-   - URL: `http://localhost:8000`
+## ❓ 지원
 
-## 📖 사용 방법
-
-### 관리자 로그인
-- **기본 계정**
-  - 아이디: `admin`
-  - 비밀번호: `Qv4RDGoEE8G41ru`
-  - ⚠️ **실제 사용 시 비밀번호 변경 권장**
-
-### 플레이어 관리 (`/player-management`)
-- **새 플레이어 등록**: 닉네임, 티어, 디비전/점수, LP, 주/부 포지션 입력
-- **플레이어 정보 수정**: 기존 플레이어 정보 변경
-- **플레이어 삭제**: 플레이어 및 관련 매치 기록 삭제
-
-**포지션 규칙**
-- 주 포지션이 'ALL'인 경우 → 부 포지션 선택 불가
-- 주 포지션이 특정 라인인 경우 → 부 포지션으로 'ALL' 선택 불가
-
-### 팀 매칭 및 결과 기록 (`/match-maker`)
-
-**팀 매칭 생성**
-1. 등록된 플레이어 중 10명 선택
-2. '팀 매칭 시작 및 상세 보기' 클릭
-3. 시스템이 자동으로 최적 팀 조합 생성
-4. 매치 상세 페이지로 자동 이동
-
-**매치 결과 기록** (`/match/{match_id}`)
-- 블루팀/레드팀 구성 및 플레이어 정보 표시
-- '블루팀 승리' 또는 '레드팀 승리' 버튼으로 결과 기록
-- 결과 등록 시 각 플레이어 매칭 점수 자동 업데이트
-
-### 플레이어 통계 (`/player-stats`)
-- 모든 플레이어의 상세 통계 표시
-- 매칭 점수, 게임 수, 승률 기준 정렬 가능
-
-## 🧠 주요 로직 설명
-
-### 티어 점수 계산
-플레이어의 티어, 디비전, LP를 기반으로 초기 실력 지표 계산
-- 티어별 기본 점수 설정
-- 디비전 및 LP에 따른 점수 가감
-- 범위: 아이언4 0점 ~ 챌린저 고득점
-
-### 팀 밸런싱 알고리즘
-1. 선택된 10명의 모든 5:5 팀 조합 탐색
-2. 각 팀의 5개 라인 배정 경우의 수 계산
-3. 다음 기준으로 최적 조합 선택:
-   - **포지션 적합도**: 주/부 포지션 일치도 점수
-   - **팀 밸런스**: 두 팀 간 평균 티어 점수 차이 최소화
-4. 평가 지표: `티어 점수 차이 / (1 + 양 팀 포지션 적합도 총점)`
-
-### 매칭 점수 업데이트
-경기 결과에 따른 플레이어 점수 조정
-- 배정된 라인과 주/부 포지션 일치 여부에 따른 차등 적용
-- 주 포지션 승리 → 큰 점수 상승
-- 비선호 포지션 패배 → 작은 점수 하락
-- 'ALL' 포지션 플레이어는 일정한 규칙 적용
-
-## 🔮 향후 개선 사항
-
-### 핵심 기능 확장
-- **포지션별 상세 통계**: 각 포지션별 승/패, 승률, ELO 추적
-- **다양한 팀 크기**: 3:3, 4:4 등 다른 팀 구성 지원
-- **자동 재매칭**: 이전 결과를 고려한 새로운 팀 조합 제안
-
-### 사용자 경험 개선
-- **UI/UX 개선**: 직관적이고 미려한 인터페이스
-- **모바일 반응형**: 모바일 기기 최적화
-- **데이터 시각화**: 차트와 그래프를 통한 통계 표시
-
-### 시스템 개선
-- **API 문서화**: Swagger UI를 통한 자동 문서 생성
-- **데이터베이스 마이그레이션**: Alembic을 통한 스키마 관리
-- **테스트 코드**: 단위 테스트 및 통합 테스트 추가
-
-### 추가 아이디어
-- **챔피언 밴픽**: 간단한 밴픽 시뮬레이션 연동
-- **매치 히스토리**: 상세한 매치 기록 및 분석
+문제가 발생하거나 기능 요청이 있으시면 이슈를 등록해 주세요.
