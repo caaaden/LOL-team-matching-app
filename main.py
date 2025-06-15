@@ -1,8 +1,7 @@
-### `main.py`
-# main.py - Tailwind CSS 지원 및 최적화 버전
+# main.py - 중복 로그인 방지 기능 제거 버전
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, Body, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
@@ -75,19 +74,11 @@ def render_template(template_name: str, context: Dict):
 
 # 메모리 누수 방지를 위한 개선된 데이터베이스 세션 관리
 def get_db():
-    """개선된 데이터베이스 세션 관리 - 메모리 누수 방지"""
     db = SessionLocal()
     try:
         yield db
-    except Exception as e:
-        db.rollback()
-        print(f"데이터베이스 세션 오류: {e}")
-        raise
     finally:
-        try:
-            db.close()
-        except Exception as e:
-            print(f"세션 종료 중 오류: {e}")
+        db.close()
 
 
 def create_admin_user_on_startup(db: Session):
@@ -96,94 +87,46 @@ def create_admin_user_on_startup(db: Session):
         hashed_password = get_password_hash(ADMIN_PASSWORD)
         admin = models.User(user_id=ADMIN_USER_ID, hashed_password=hashed_password)
         db.add(admin)
-        try:
-            db.commit()
-            print(f"Admin user '{ADMIN_USER_ID}' created.")
-        except IntegrityError:
-            db.rollback()
-            print(f"Admin user '{ADMIN_USER_ID}' already exists or error during creation (IntegrityError).")
-        except Exception as e:
-            db.rollback()
-            print(f"Error creating admin user: {e}")
+        db.commit()
+        print(f"Admin user '{ADMIN_USER_ID}' created.")
     elif not verify_password(ADMIN_PASSWORD, admin_user.hashed_password):
-        # 비밀번호 변경 시 기존 세션도 삭제하여 재로그인 유도
-        existing_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == admin_user.id).first()
-        if existing_session:
-            db.delete(existing_session)
+        # 비밀번호 변경 시, 해당 유저의 모든 활성 세션을 삭제하여 재로그인 유도
+        db.query(models.ActiveSession).filter(models.ActiveSession.user_id == admin_user.id).delete()
         admin_user.hashed_password = get_password_hash(ADMIN_PASSWORD)
-        try:
-            db.commit()
-            print(f"Admin user '{ADMIN_USER_ID}' password updated.")
-        except Exception as e:
-            db.rollback()
-            print(f"Error updating admin password: {e}")
+        db.commit()
+        print(f"Admin user '{ADMIN_USER_ID}' password updated and all previous sessions invalidated.")
     else:
         print(f"Admin user '{ADMIN_USER_ID}' verified.")
 
 
 # 만료된 세션 정리를 위한 백그라운드 태스크
 async def cleanup_expired_sessions():
-    """만료된 활성 세션 정리 - 메모리 누수 방지"""
     while True:
         try:
-            db = SessionLocal()
-            try:
-                # 만료된 세션 찾기
-                expired_sessions = db.query(models.ActiveSession).filter(
-                    models.ActiveSession.expires_at < datetime.utcnow()
-                ).all()
-
-                if expired_sessions:
-                    print(f"🧹 만료된 세션 {len(expired_sessions)}개 정리 중...")
-
-                    # 만료된 세션 삭제
-                    for session in expired_sessions:
-                        db.delete(session)
-
+            with SessionLocal() as db:
+                expired_count = db.query(models.ActiveSession).filter(
+                    models.ActiveSession.expires_at < datetime.now(timezone.utc)
+                ).delete()
+                if expired_count > 0:
                     db.commit()
-                    print(f"✅ 만료된 세션 정리 완료")
-
-            except Exception as e:
-                print(f"❌ 세션 정리 중 오류: {e}")
-                db.rollback()
-            finally:
-                db.close()
-
+                    print(f"🧹 만료된 세션 {expired_count}개 정리 완료")
         except Exception as e:
             print(f"❌ 세션 정리 태스크 오류: {e}")
-
-        # 1시간마다 실행
         await asyncio.sleep(3600)
 
 
-# 메모리 모니터링 미들웨어
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """애플리케이션 시작/종료 시 실행되는 함수"""
-    # 시작 시
-    print("🚀 애플리케이션 시작 - 메모리 최적화 모드")
-
-    # 백그라운드 태스크 시작
+    print("🚀 애플리케이션 시작 - 중복 로그인 방지 기능 비활성화")
     cleanup_task = asyncio.create_task(cleanup_expired_sessions())
-
-    # 데이터베이스 테이블 생성
     try:
         Base.metadata.create_all(bind=engine)
         print("✅ 데이터베이스 테이블 생성 완료")
+        with SessionLocal() as db:
+            create_admin_user_on_startup(db)
     except Exception as e:
-        print(f"❌ 테이블 생성 중 오류: {e}")
-        print("🔄 계속 진행합니다...")
-
-    # 관리자 사용자 생성
-    db = SessionLocal()
-    try:
-        create_admin_user_on_startup(db)
-    finally:
-        db.close()
-
+        print(f"❌ 시작 시 오류: {e}")
     yield
-
-    # 종료 시
     print("🛑 애플리케이션 종료 - 정리 작업 중...")
     cleanup_task.cancel()
     try:
@@ -192,46 +135,10 @@ async def lifespan(app: FastAPI):
         pass
 
 
-# FastAPI 앱 생성 (lifespan 적용)
 app = FastAPI(title="LoL 팀 매칭 시스템", lifespan=lifespan)
-
-# 압축 미들웨어 추가 (성능 향상)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-# 정적 파일 및 템플릿 설정
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
-# 메모리 모니터링 미들웨어 추가
-@app.middleware("http")
-async def monitor_memory(request: Request, call_next):
-    """메모리 사용량 모니터링 미들웨어"""
-    # 요청 전 메모리 사용량
-    process = psutil.Process()
-    before_memory = process.memory_info().rss / 1024 / 1024  # MB
-
-    response = await call_next(request)
-
-    # 요청 후 메모리 사용량
-    after_memory = process.memory_info().rss / 1024 / 1024  # MB
-    memory_diff = after_memory - before_memory
-
-    # 메모리 사용량이 크게 증가한 경우
-    if memory_diff > 5:  # 5MB 이상 증가
-        print(f"⚠️ 메모리 사용량 증가: {memory_diff:.2f} MB - {request.method} {request.url.path}")
-
-        # 가비지 컬렉션 실행
-        collected = gc.collect()
-        if collected > 0:
-            print(f"🧹 가비지 컬렉션: {collected}개 객체 정리")
-
-    # 전체 메모리 사용량이 높은 경우 경고
-    if after_memory > 400:  # 400MB 이상 (Render 512MB 제한 고려)
-        print(f"🚨 높은 메모리 사용량: {after_memory:.2f} MB")
-        gc.collect()  # 강제 가비지 컬렉션
-
-    return response
 
 
 def verify_password(plain_password, hashed_password):
@@ -248,18 +155,14 @@ def get_user_from_db(db, user_id: str) -> Optional[models.User]:
 
 def authenticate_user(db, user_id: str, password: str) -> Optional[models.User]:
     user = get_user_from_db(db, user_id)
-    if not user:
-        return None
-    if not verify_password(password, user.hashed_password):
-        return None
-    if user.user_id != ADMIN_USER_ID:
+    if not user or not verify_password(password, user.hashed_password) or user.user_id != ADMIN_USER_ID:
         return None
     return user
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -269,33 +172,20 @@ async def get_current_user_from_cookie(request: Request, db: Session = Depends(g
     token = request.cookies.get("access_token")
     if not token or not token.startswith("Bearer "):
         return None
-
     token = token.replace("Bearer ", "")
 
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id_from_token: Optional[str] = payload.get("sub")
-        if user_id_from_token is None:
-            return None
-    except JWTError:
-        return None
+    # 토큰을 기반으로 활성 세션을 직접 조회
+    active_session = db.query(models.ActiveSession).filter(models.ActiveSession.token == token).first()
 
-    user = get_user_from_db(db, user_id=user_id_from_token)
-    if not user:
-        return None
-
-    # DB에 저장된 활성 세션 정보와 쿠키의 토큰을 비교
-    active_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == user.id).first()
-
-    # 세션이 없거나, 토큰이 일치하지 않거나, 세션이 만료된 경우 -> 유효하지 않은 세션
-    if not active_session or active_session.token != token or active_session.expires_at < datetime.utcnow():
-        # 만료된 세션 데이터가 있다면 정리
-        if active_session and active_session.expires_at < datetime.utcnow():
+    # 세션이 없거나 만료된 경우
+    if not active_session or active_session.expires_at < datetime.now(timezone.utc):
+        if active_session:  # 만료된 세션이면 DB에서 삭제
             db.delete(active_session)
             db.commit()
         return None
 
-    return user
+    # 세션이 유효하면 연결된 사용자 반환
+    return active_session.user
 
 
 async def login_required(user: Optional[models.User] = Depends(get_current_user_from_cookie)):
@@ -323,6 +213,7 @@ async def login_page(request: Request, db: Session = Depends(get_db)):
     return render_template("login.html", {"request": request, "error": error_message})
 
 
+# 로그인 로직 (중복 로그인 확인 제거)
 @app.post("/login", name="login_form_submit")
 async def login_form_post(request: Request, user_id: str = Form(...), password: str = Form(...),
                           db: Session = Depends(get_db)):
@@ -333,17 +224,11 @@ async def login_form_post(request: Request, user_id: str = Form(...), password: 
     if not user:
         return render_template("login.html", {"request": request, "error": "아이디 또는 비밀번호가 잘못되었습니다."})
 
-    existing_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == user.id).first()
-    if existing_session:
-        if existing_session.expires_at < datetime.utcnow():
-            db.delete(existing_session)
-            db.commit()
-        else:
-            return render_template("login.html",
-                                              {"request": request, "error": "해당 계정은 이미 다른 기기에서 로그인되어 있습니다."})
+    # 중복 로그인 확인 로직 제거됨.
+    # 성공적으로 인증되면 항상 새로운 세션과 토큰을 생성.
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    expire_datetime = datetime.utcnow() + access_token_expires
+    expire_datetime = datetime.now(timezone.utc) + access_token_expires
     access_token = create_access_token(data={"sub": user.user_id}, expires_delta=access_token_expires)
 
     new_session = models.ActiveSession(user_id=user.id, token=access_token, expires_at=expire_datetime)
@@ -362,6 +247,7 @@ async def login_form_post(request: Request, user_id: str = Form(...), password: 
     return response
 
 
+# 로그아웃 (현재 세션만 정리)
 @app.get("/logout", name="logout")
 async def logout(request: Request, db: Session = Depends(get_db)):
     token_from_cookie = request.cookies.get("access_token")
@@ -398,35 +284,19 @@ def create_player_api(player: schemas.PlayerCreate, db: Session = Depends(get_db
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 사용 중인 닉네임입니다.")
     tier_score = calculate_tier_score(player.tier, player.division, player.lp)
 
-    # 컬럼명 변경에 맞춘 수정
     db_player = models.Player(
-        nickname=player.nickname,
-        tier=player.tier,
-        division=player.division,
-        player_position=player.position,  # position → player_position
-        sub_position=player.sub_position,
-        lp=player.lp,
-        tier_score=tier_score,
-        match_score=tier_score,
-        win_count=0,
-        lose_count=0
+        nickname=player.nickname, tier=player.tier, division=player.division,
+        player_position=player.position, sub_position=player.sub_position, lp=player.lp,
+        tier_score=tier_score, match_score=tier_score
     )
     try:
         db.add(db_player)
         db.commit()
         db.refresh(db_player)
-        return schemas.Player.from_orm(db_player)  # 커스텀 from_orm 사용
-    except IntegrityError as e:
-        db.rollback()
-        detail_msg = "플레이어 저장 중 DB 제약조건 위반"
-        if "UNIQUE constraint failed" in str(e.orig).lower():
-            detail_msg = f"닉네임 '{player.nickname}' 또는 다른 고유 값이 이미 존재합니다."
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail_msg)
+        return schemas.Player.from_orm(db_player)
     except Exception as e:
         db.rollback()
-        print(f"플레이어 저장 중 예외: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="플레이어 저장 중 서버 오류")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"플레이어 저장 중 오류: {e}")
 
 
 @app.put("/players/{player_id}", response_model=schemas.Player, name="update_player_api", tags=["api_player"])
@@ -435,36 +305,25 @@ def update_player_api(player_id: int, player_data: schemas.PlayerCreate, db: Ses
     player_in_db = db.query(models.Player).filter(models.Player.id == player_id).first()
     if not player_in_db:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="플레이어를 찾을 수 없습니다")
-
-    if player_data.nickname != player_in_db.nickname:
-        if db.query(models.Player).filter(models.Player.nickname == player_data.nickname,
-                                          models.Player.id != player_id).first():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail=f"닉네임 '{player_data.nickname}'은(는) 이미 사용 중입니다.")
+    if player_data.nickname != player_in_db.nickname and \
+            db.query(models.Player).filter(models.Player.nickname == player_data.nickname).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 사용 중인 닉네임입니다.")
 
     tier_score = calculate_tier_score(player_data.tier, player_data.division, player_data.lp)
-
-    # 컬럼명 변경에 맞춘 수정
     player_in_db.nickname = player_data.nickname
     player_in_db.tier = player_data.tier
     player_in_db.division = player_data.division
-    player_in_db.player_position = player_data.position  # position → player_position
+    player_in_db.player_position = player_data.position
     player_in_db.sub_position = player_data.sub_position
     player_in_db.lp = player_data.lp
     player_in_db.tier_score = tier_score
-
     try:
         db.commit()
         db.refresh(player_in_db)
-        return schemas.Player.from_orm(player_in_db)  # 커스텀 from_orm 사용
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"닉네임 '{player_data.nickname}' 또는 고유 값 중복.")
+        return schemas.Player.from_orm(player_in_db)
     except Exception as e:
         db.rollback()
-        print(f"플레이어 업데이트 중 예외: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="플레이어 업데이트 중 서버 오류")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"플레이어 업데이트 중 오류: {e}")
 
 
 @app.delete("/players/{player_id}", name="delete_player_api", status_code=status.HTTP_200_OK, tags=["api_player"])
@@ -473,16 +332,12 @@ def delete_player_api(player_id: int, db: Session = Depends(get_db), admin: mode
     if not player:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="플레이어를 찾을 수 없습니다")
     try:
-        db.query(models.TeamAssignment).filter(models.TeamAssignment.player_id == player_id).delete(
-            synchronize_session='fetch')
         db.delete(player)
         db.commit()
-        return {"message": f"플레이어 '{player.nickname}' (ID: {player_id}) 삭제 완료.", "player_id": player_id}
+        return {"message": f"플레이어 '{player.nickname}' 삭제 완료."}
     except Exception as e:
         db.rollback()
-        print(f"플레이어 삭제 중 예외: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"플레이어 삭제 오류: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"플레이어 삭제 오류: {e}")
 
 
 @app.get("/match-maker", response_class=HTMLResponse, name="match_maker_page")
@@ -818,23 +673,13 @@ async def help_page(request: Request, db: Session = Depends(get_db)):
 
 @app.post("/token", response_model=schemas.Token, tags=["api_auth"], name="api_login_for_token")
 async def login_for_access_token_api(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    if form_data.username != ADMIN_USER_ID:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="관리자 아이디가 아닙니다.",
-                            headers={"WWW-Authenticate": "Bearer"})
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="아이디 또는 비밀번호가 잘못되었습니다.",
                             headers={"WWW-Authenticate": "Bearer"})
 
-    # API Login Session Check
-    existing_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == user.id).first()
-    if existing_session and existing_session.expires_at > datetime.utcnow():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="해당 계정은 이미 다른 곳에서 로그인되어 있습니다.")
-    elif existing_session:
-        db.delete(existing_session)
-
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    expire_datetime = datetime.utcnow() + access_token_expires
+    expire_datetime = datetime.now(timezone.utc) + access_token_expires
     access_token = create_access_token(data={"sub": user.user_id}, expires_delta=access_token_expires)
 
     new_session = models.ActiveSession(user_id=user.id, token=access_token, expires_at=expire_datetime)
@@ -844,7 +689,7 @@ async def login_for_access_token_api(form_data: OAuth2PasswordRequestForm = Depe
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-# API Auth check logic
+# API Auth check (토큰 기반으로 세션 확인)
 async def get_current_api_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증 정보를 확인할 수 없습니다.",
                                           headers={"WWW-Authenticate": "Bearer"})
@@ -856,13 +701,12 @@ async def get_current_api_user(token: str = Depends(oauth2_scheme), db: Session 
     except JWTError:
         raise credentials_exception
 
-    user = get_user_from_db(db, user_id=user_id_from_token)
-    if user is None or user.user_id != ADMIN_USER_ID:
+    active_session = db.query(models.ActiveSession).filter(models.ActiveSession.token == token).first()
+    if not active_session or active_session.expires_at < datetime.now(timezone.utc):
         raise credentials_exception
 
-    # DB의 활성 세션과 토큰 일치 여부 확인
-    active_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == user.id).first()
-    if not active_session or active_session.token != token or active_session.expires_at < datetime.utcnow():
+    user = active_session.user
+    if user is None or user.user_id != ADMIN_USER_ID:
         raise credentials_exception
 
     return user
@@ -870,7 +714,7 @@ async def get_current_api_user(token: str = Depends(oauth2_scheme), db: Session 
 
 @app.get("/api/users/me", response_model=schemas.User, tags=["api_auth"], name="api_read_current_user")
 async def read_users_me_api(current_user: models.User = Depends(get_current_api_user)):
-    return current_user
+    return schemas.User.from_orm(current_user)
 
 
 if __name__ == "__main__":
