@@ -5,55 +5,93 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>도움말 - LoL 팀 매칭 시스템</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts 추가 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
+        }
+    </style>
 </head>
-<body class="bg-gray-100 font-sans">
-    <div class="container mx-auto max-w-4xl mt-12 mb-12 p-8 bg-white rounded-xl shadow-lg">
-        <h1 class="text-4xl font-bold text-gray-800 text-center mb-10">도움말</h1>
+<body class="py-12 px-4">
+    <div class="container mx-auto max-w-4xl">
 
-        <div class="space-y-12">
-            <div class="help-section">
-                <h2 class="text-2xl font-semibold text-gray-700 border-b-2 border-blue-500 pb-3 mb-5">기본 사용법</h2>
-                <ol class="list-decimal list-inside space-y-4 text-gray-600 pl-4">
-                    <li><strong>클랜원 등록:</strong> '플레이어 관리' 페이지에서 '새 플레이어 등록' 버튼을 클릭합니다. 닉네임, 티어, 주/부 포지션을 정확히 입력하고 저장합니다.</li>
-                    <li><strong>팀 생성 및 결과 등록:</strong> '팀 매칭 및 결과 기록' 페이지에서 매칭에 참여할 10명의 플레이어를 선택합니다. '팀 매칭 시작' 버튼을 누르면 생성된 매치 상세 페이지로 이동하며, 경기 종료 후 해당 페이지에서 승리팀을 기록합니다.</li>
-                    <li><strong>통계 확인:</strong> '플레이어 통계' 페이지에서 모든 플레이어의 매칭 점수, 전적, 승률을 확인할 수 있습니다. 컬럼 헤더를 클릭하여 원하는 기준으로 정렬할 수 있습니다.</li>
-                </ol>
-            </div>
+        <!-- 도움말 카드 -->
+        <div class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden">
+            <div class="p-8 sm:p-10">
+                <h1 class="text-4xl font-black text-gray-800 text-center mb-12 tracking-tight">도움말</h1>
 
-            <div class="help-section">
-                <h2 class="text-2xl font-semibold text-gray-700 border-b-2 border-blue-500 pb-3 mb-5">자주 묻는 질문 (FAQ)</h2>
-                <div class="space-y-8">
-                    <div class="faq-item">
-                        <p class="font-bold text-lg text-gray-800 mb-2">Q: 팀 밸런싱은 어떤 기준으로 이루어지나요?</p>
-                        <div class="pl-5 text-gray-600 border-l-4 border-gray-200">
-                            <p>A: 10명의 플레이어를 선택하면, 시스템은 각 플레이어의 티어 점수와 주/부 포지션을 고려하여 5개의 고정된 라인(탑, 정글, 미드, 원딜, 서포터)으로 구성된 두 팀을 만듭니다. 알고리즘은 두 팀 간의 평균 티어 점수 차이를 최소화하고, 동시에 각 플레이어가 자신의 선호 포지션(주 포지션 > 부 포지션 > 'ALL' 포지션 순)에 최대한 가깝게 배정되도록 노력합니다. 최종적으로 티어 밸런스와 포지션 적합도를 종합적으로 고려하여 가장 균형 잡힌 팀 조합을 제시합니다.</p>
+                <div class="space-y-12">
+                    <!-- 기본 사용법 섹션 -->
+                    <div class="help-section">
+                        <h2 class="text-2xl font-bold text-gray-700 border-b-2 border-blue-500/50 pb-3 mb-6">기본 사용법</h2>
+                        <ol class="list-decimal list-inside space-y-4 text-gray-600 pl-4 text-base leading-relaxed">
+                            <li>
+                                <strong>플레이어 등록:</strong>
+                                <a href="{{ url_for('player_management_page') }}" class="text-blue-600 hover:underline font-semibold">'플레이어 관리'</a> 페이지에서 새 플레이어를 등록합니다. 닉네임, 티어, 주/부 포지션을 정확히 입력하고 저장하세요.
+                            </li>
+                            <li>
+                                <strong>팀 생성 및 결과 등록:</strong>
+                                <a href="{{ url_for('match_maker_page') }}" class="text-blue-600 hover:underline font-semibold">'팀 매칭'</a> 페이지에서 10명 단위의 플레이어를 선택 후 매치를 생성합니다. 경기 종료 후 매치 상세 페이지에서 승리팀을 기록할 수 있습니다.
+                            </li>
+                            <li>
+                                <strong>통계 확인:</strong>
+                                <a href="{{ url_for('player_stats_page') }}" class="text-blue-600 hover:underline font-semibold">'플레이어 통계'</a> 페이지에서 모든 플레이어의 매칭 점수, 전적, 승률을 확인할 수 있습니다.
+                            </li>
+                        </ol>
+                    </div>
+
+                    <!-- FAQ 섹션 -->
+                    <div class="help-section">
+                        <h2 class="text-2xl font-bold text-gray-700 border-b-2 border-blue-500/50 pb-3 mb-6">자주 묻는 질문 (FAQ)</h2>
+                        <div class="space-y-8">
+                            <div class="faq-item">
+                                <p class="font-bold text-lg text-gray-800 mb-2">Q. 팀 밸런싱은 어떤 기준으로 이루어지나요?</p>
+                                <div class="pl-5 text-gray-600 border-l-4 border-gray-300 text-base leading-relaxed">
+                                    <p>
+                                        A. 팀 밸런싱은 <strong>티어 점수</strong>와 <strong>포지션 적합도</strong> 두 가지를 핵심 기준으로 삼습니다. 시스템은 10명의 플레이어로 만들 수 있는 모든 팀 조합을 고려하여, 두 팀 간의 평균 티어 점수 차이를 최소화하는 동시에, 각 플레이어가 자신의 선호 포지션에 최대한 배정되는 조합을 찾아냅니다.
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="faq-item">
+                                <p class="font-bold text-lg text-gray-800 mb-2">Q. '매칭 점수'는 무엇인가요?</p>
+                                <div class="pl-5 text-gray-600 border-l-4 border-gray-300 text-base leading-relaxed">
+                                    <p>
+                                        A. '매칭 점수'는 플레이어의 상대적인 실력을 나타내는 동적인 점수입니다. 초기에는 티어 점수와 동일하게 시작하지만, 매치 승패 결과에 따라 계속 변동됩니다. 이를 통해 공식 티어와는 별개로 내전에서의 실제 퍼포먼스를 반영하는 지표로 활용됩니다.
+                                    </p>
+                                </div>
+                            </div>
+                             <div class="faq-item">
+                                <p class="font-bold text-lg text-gray-800 mb-2">Q. 주/부 포지션은 어떻게 활용되나요?</p>
+                                <div class="pl-5 text-gray-600 border-l-4 border-gray-300 text-base leading-relaxed">
+                                    <p>
+                                        A. 팀 매칭 시, 플레이어는 가능한 한 <strong>주 포지션에 우선 배정</strong>됩니다. 주 포지션 배정이 불가능할 경우 부 포지션이 고려됩니다. 시스템은 5개의 고정된 라인을 채우면서 팀 전체의 포지션 만족도와 티어 밸런스를 최적화하려고 시도합니다.
+                                    </p>
+                                </div>
+                            </div>
+                             <div class="faq-item">
+                                <p class="font-bold text-lg text-gray-800 mb-2">Q. 플레이어 수가 10명이 아닐 경우 매칭이 가능한가요?</p>
+                                <div class="pl-5 text-gray-600 border-l-4 border-gray-300 text-base leading-relaxed">
+                                    <p>
+                                        A. 아니요, 현재 시스템은 **정확히 10명의 배수**(10명, 20명, 30명...)로 플레이어를 선택해야 팀 매칭이 가능합니다. 10명 초과 시, 가장 균등한 실력의 그룹으로 자동 분배하여 여러 매치를 동시에 생성합니다.
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="faq-item">
-                        <p class="font-bold text-lg text-gray-800 mb-2">Q: '매칭 점수'는 무엇인가요?</p>
-                        <div class="pl-5 text-gray-600 border-l-4 border-gray-200">
-                            <p>A: '매칭 점수'는 선수의 초기 '티어 점수'에서 시작하여, 실제 경기 승패에 따라 변동되는 점수입니다. 승리 시 점수가 상승하고 패배 시 하락하여, 장기적으로 실제 실력에 더 가깝게 수렴하는 것을 목표로 합니다. 팀 매칭 시에는 '티어 점수'와 포지션 적합도를 기준으로 밸런스를 맞춥니다.</p>
-                        </div>
-                    </div>
-                     <div class="faq-item">
-                        <p class="font-bold text-lg text-gray-800 mb-2">Q: 주/부 포지션은 어떻게 활용되나요?</p>
-                        <div class="pl-5 text-gray-600 border-l-4 border-gray-200">
-                            <p>A: 팀 매칭 시, 플레이어는 가능한 한 주 포지션에 우선 배정됩니다. 주 포지션에 배정될 수 없는 경우 부 포지션이 고려되며, 그 다음으로 주/부 포지션이 'ALL'인 경우 다른 빈 라인에 배정될 수 있습니다. 시스템은 5개의 고정된 라인을 채우면서 팀 전체의 포지션 만족도와 티어 밸런스를 최적화하려고 시도합니다.</p>
-                        </div>
-                    </div>
-                     <div class="faq-item">
-                        <p class="font-bold text-lg text-gray-800 mb-2">Q: 플레이어 수가 10명이 아닐 경우 매칭이 가능한가요?</p>
-                        <div class="pl-5 text-gray-600 border-l-4 border-gray-200">
-                            <p>A: 아니요, 현재 시스템은 정확히 10명의 플레이어를 선택해야 팀 매칭이 가능합니다. 10의 배수(20, 30명 등)를 선택하면 여러 개의 매치를 동시에 생성할 수 있습니다.</p>
-                        </div>
-                    </div>
+                </div>
+
+                <div class="mt-12 border-t border-gray-200 pt-8 text-center">
+                    <a href="{{ url_for('home') }}" class="text-gray-500 hover:text-blue-600 font-semibold transition-colors duration-300">
+                        메인으로 돌아가기
+                    </a>
                 </div>
             </div>
         </div>
 
-        <div class="mt-12 text-center">
-            <a href="/" class="inline-block py-3 px-8 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75 transition">메인으로 돌아가기</a>
-        </div>
     </div>
 </body>
 </html>

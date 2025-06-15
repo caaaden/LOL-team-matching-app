@@ -5,87 +5,94 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>플레이어 통계</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts 추가 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
+        }
+    </style>
 </head>
-<body class="bg-gray-100 font-sans">
-    <div class="container mx-auto max-w-6xl mt-12 mb-12 p-8 bg-white rounded-xl shadow-lg">
-        <h1 class="text-4xl font-bold text-gray-800 text-center mb-8">플레이어 통계</h1>
+<body class="py-12 px-4">
+    <div class="container mx-auto max-w-6xl">
+        <div class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden">
+            <div class="p-6 sm:p-8">
+                <h1 class="text-4xl font-black text-gray-800 text-center mb-8 tracking-tight">플레이어 통계</h1>
 
-        {% if request.query_params.get('error') %}
-            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert"><p>{{ request.query_params.get('error') }}</p></div>
-        {% endif %}
-        {% if request.query_params.get('success') %}
-            <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6" role="alert"><p>{{ request.query_params.get('success') }}</p></div>
-        {% endif %}
+                {% if request.query_params.get('error') %}
+                    <div class="bg-red-500/10 border border-red-500/20 text-red-700 px-4 py-3 rounded-lg relative mb-6 flex items-center" role="alert">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <p>{{ request.query_params.get('error') }}</p>
+                    </div>
+                {% endif %}
+                {% if request.query_params.get('success') %}
+                    <div class="bg-green-500/10 border border-green-500/20 text-green-700 px-4 py-3 rounded-lg relative mb-6 flex items-center" role="alert">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-3 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <p>{{ request.query_params.get('success') }}</p>
+                    </div>
+                {% endif %}
 
-        <div class="overflow-x-auto relative shadow-md sm:rounded-lg">
-            {% if player_stats %}
-            <table class="w-full text-sm text-left text-gray-500">
-                <thead class="text-xs text-gray-700 uppercase bg-gray-100">
-                    <tr>
-                        <th scope="col" class="py-3 px-6 text-center">순위</th>
-                        <th scope="col" class="py-3 px-6">닉네임</th>
-                        <th scope="col" class="py-3 px-6 text-center">주 포지션</th>
-                        <th scope="col" class="py-3 px-6 text-center">부 포지션</th>
-                        <th scope="col" class="py-3 px-6 text-center">티어</th>
-                        <th scope="col" class="py-3 px-6 text-center">
-                            <a href="{{ url_for('player_stats_page') }}?sort_by=match_score&order={{ 'desc' if sort_by != 'match_score' or order == 'asc' else 'asc' }}" class="flex items-center justify-center gap-1 hover:text-blue-600">
-                                매칭 점수{% if sort_by == 'match_score' %}<span class="text-blue-600">{{ '▼' if order == 'desc' else '▲' }}</span>{% endif %}
-                            </a>
-                        </th>
-                        <th scope="col" class="py-3 px-6 text-center">
-                             <a href="{{ url_for('player_stats_page') }}?sort_by=total_games&order={{ 'desc' if sort_by != 'total_games' or order == 'asc' else 'asc' }}" class="flex items-center justify-center gap-1 hover:text-blue-600">
-                                전적{% if sort_by == 'total_games' %}<span class="text-blue-600">{{ '▼' if order == 'desc' else '▲' }}</span>{% endif %}
-                            </a>
-                        </th>
-                        <th scope="col" class="py-3 px-6 text-center">
-                             <a href="{{ url_for('player_stats_page') }}?sort_by=win_rate&order={{ 'desc' if sort_by != 'win_rate' or order == 'asc' else 'asc' }}" class="flex items-center justify-center gap-1 hover:text-blue-600">
-                                승률{% if sort_by == 'win_rate' %}<span class="text-blue-600">{{ '▼' if order == 'desc' else '▲' }}</span>{% endif %}
-                            </a>
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for stat in player_stats %}
-                    <tr class="bg-white border-b hover:bg-gray-50">
-                        <td class="py-4 px-6 font-medium text-gray-900 text-center">{{ loop.index }}</td>
-                        <td class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">{{ stat.player.nickname }}</td>
-                        <td class="py-4 px-6 text-center"><span class="px-2 py-1 text-xs font-semibold rounded-full {{ POSITION_COLOR_MAP.get(stat.clean_position, 'bg-gray-400 text-white') }}">{{ stat.clean_position }}</span></td>
-                        <td class="py-4 px-6 text-center">
-                            {% if stat.clean_sub_position != "없음" %}
-                            <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-400 text-white">{{ stat.clean_sub_position }}</span>
-                            {% else %}-{% endif %}
-                        </td>
-                        <td class="py-4 px-6 text-center">
-                            <span class="px-2 py-1 text-xs font-semibold rounded-full {{ TIER_COLOR_MAP.get(stat.clean_tier, 'bg-gray-200') }}">
-                                {{ stat.clean_tier }} {% if stat.clean_tier not in ['MASTER', 'GRANDMASTER', 'CHALLENGER'] %}{% if stat.player.division == 1 %}I{% elif stat.player.division == 2 %}II{% elif stat.player.division == 3 %}III{% elif stat.player.division == 4 %}IV{% endif %}{% else %}{{ stat.player.division }}{% endif %}
-                            </span>
-                        </td>
-                        <td class="py-4 px-6 font-bold text-gray-700 text-center">{{ "%.1f"|format(stat.player.match_score) }}</td>
-                        <td class="py-4 px-6 text-center">{{ stat.total_games }}전 {{ stat.player.win_count }}승 {{ stat.player.lose_count }}패</td>
-                        <td class="py-4 px-6 font-bold text-center {{ 'text-red-600' if stat.win_rate < 50 else 'text-green-600' }}">{{ "%.1f"|format(stat.win_rate) }}%</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="text-center py-10 text-gray-500">
-                <p>등록된 플레이어가 없습니다. <a href="{{url_for('player_management_page')}}" class="text-blue-600 hover:underline">플레이어 관리</a>에서 등록해주세요.</p>
+                <div class="overflow-x-auto">
+                    {% if player_stats %}
+                    <table class="w-full text-sm text-left text-gray-600">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-500/10">
+                            <tr>
+                                <th scope="col" class="py-3 px-6 text-center rounded-l-lg">순위</th>
+                                <th scope="col" class="py-3 px-6">닉네임</th>
+                                <th scope="col" class="py-3 px-6 text-center">주 포지션</th>
+                                <th scope="col" class="py-3 px-6 text-center">부 포지션</th>
+                                <th scope="col" class="py-3 px-6 text-center">티어</th>
+                                <th scope="col" class="py-3 px-6 text-center">
+                                    <a href="{{ url_for('player_stats_page') }}?sort_by=match_score&order={{ 'desc' if sort_by != 'match_score' or order == 'asc' else 'asc' }}" class="inline-flex items-center justify-center gap-1 hover:text-blue-600 transition-colors">
+                                        매칭 점수{% if sort_by == 'match_score' %}<span class="text-blue-600">{{ '▼' if order == 'desc' else '▲' }}</span>{% endif %}
+                                    </a>
+                                </th>
+                                <th scope="col" class="py-3 px-6 text-center">
+                                     <a href="{{ url_for('player_stats_page') }}?sort_by=total_games&order={{ 'desc' if sort_by != 'total_games' or order == 'asc' else 'asc' }}" class="inline-flex items-center justify-center gap-1 hover:text-blue-600 transition-colors">
+                                        전적{% if sort_by == 'total_games' %}<span class="text-blue-600">{{ '▼' if order == 'desc' else '▲' }}</span>{% endif %}
+                                    </a>
+                                </th>
+                                <th scope="col" class="py-3 px-6 text-center rounded-r-lg">
+                                     <a href="{{ url_for('player_stats_page') }}?sort_by=win_rate&order={{ 'desc' if sort_by != 'win_rate' or order == 'asc' else 'asc' }}" class="inline-flex items-center justify-center gap-1 hover:text-blue-600 transition-colors">
+                                        승률{% if sort_by == 'win_rate' %}<span class="text-blue-600">{{ '▼' if order == 'desc' else '▲' }}</span>{% endif %}
+                                    </a>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in player_stats %}
+                            <tr class="bg-white/0 border-b border-gray-200/50 hover:bg-gray-500/10">
+                                <td class="py-4 px-6 font-medium text-gray-900 text-center">{{ loop.index }}</td>
+                                <td class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">{{ stat.player.nickname }}</td>
+                                <td class="py-4 px-6 text-center"><span class="px-2 py-1 text-xs font-semibold rounded-full {{ POSITION_COLOR_MAP.get(stat.clean_position, 'bg-gray-400 text-white') }}">{{ stat.clean_position }}</span></td>
+                                <td class="py-4 px-6 text-center">{% if stat.clean_sub_position != "없음" %}<span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-400 text-white">{{ stat.clean_sub_position }}</span>{% else %}-{% endif %}</td>
+                                <td class="py-4 px-6 text-center"><span class="px-2 py-1 text-xs font-semibold rounded-full {{ TIER_COLOR_MAP.get(stat.clean_tier, 'bg-gray-200') }}">{{ stat.clean_tier }} {% if stat.clean_tier not in ['MASTER', 'GRANDMASTER', 'CHALLENGER'] %}{% if stat.player.division == 1 %}I{% elif stat.player.division == 2 %}II{% elif stat.player.division == 3 %}III{% elif stat.player.division == 4 %}IV{% endif %}{% else %}{{ stat.player.division }}{% endif %}</span></td>
+                                <td class="py-4 px-6 font-bold text-gray-700 text-center">{{ "%.1f"|format(stat.player.match_score) }}</td>
+                                <td class="py-4 px-6 text-center">{{ stat.total_games }}전 {{ stat.player.win_count }}승 {{ stat.player.lose_count }}패</td>
+                                <td class="py-4 px-6 font-bold text-center {{ 'text-red-600' if stat.win_rate < 50 else 'text-green-600' }}">{{ "%.1f"|format(stat.win_rate) }}%</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-center py-10 text-gray-500">
+                        <p>등록된 플레이어가 없습니다. <a href="{{url_for('player_management_page')}}" class="text-blue-600 hover:underline">플레이어 관리</a>에서 등록해주세요.</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="mt-12 border-t border-gray-200/50 pt-8 text-center">
+                    <a href="{{ url_for('home') }}" class="text-gray-500 hover:text-blue-600 font-semibold transition-colors duration-300">메인으로 돌아가기</a>
+                </div>
             </div>
-            {% endif %}
-        </div>
-        <div class="mt-12 text-center">
-            <a href="{{ url_for('home') }}" class="inline-block py-2 px-6 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75 transition">메인으로 돌아가기</a>
         </div>
     </div>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const sortLinks = document.querySelectorAll('th a');
-            sortLinks.forEach(link => {
-                link.addEventListener('click', function (e) {
-                    // 기본 동작으로 페이지 이동
-                });
-            });
-        });
+        // 이 페이지는 특별한 동적 기능이 없으므로 스크립트는 비워둡니다.
+        // 정렬은 서버사이드 렌더링으로 처리됩니다.
     </script>
 </body>
 </html>

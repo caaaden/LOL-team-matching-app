@@ -5,180 +5,227 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>플레이어 관리</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts 추가 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
+        }
+        /* 폼 나타나는 애니메이션 */
+        .form-container {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease-in-out, margin-bottom 0.5s ease-in-out, opacity 0.3s ease-in-out 0.2s;
+            opacity: 0;
+        }
+        .form-container.open {
+            max-height: 500px; /* 충분한 높이 */
+            margin-bottom: 2rem;
+            opacity: 1;
+        }
+    </style>
 </head>
-<body class="bg-gray-100 font-sans">
-
+<body class="py-12 px-4">
     <!-- 플레이어 삭제 확인 모달 -->
-    <div id="deleteConfirmModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden transition-opacity duration-300 ease-in-out" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 transform transition-all duration-300 ease-in-out scale-95 opacity-0">
-            <div class="p-6">
-                <div class="flex items-start">
-                    <div class="flex-shrink-0 mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                        <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                        </svg>
-                    </div>
-                    <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                        <h3 class="text-lg font-semibold leading-6 text-gray-900" id="modal-title">플레이어 삭제 확인</h3>
-                        <div class="mt-2">
-                            <p class="text-sm text-gray-500" id="modal-message">
-                                정말로 이 플레이어를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
-                            </p>
-                        </div>
-                    </div>
+    <div id="deleteConfirmModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 hidden transition-opacity duration-300 ease-in-out" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl w-full max-w-md mx-4 transform transition-all duration-300 ease-in-out scale-95 opacity-0">
+            <div class="p-6 text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                    <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                </div>
+                <h3 class="text-lg font-semibold leading-6 text-gray-900 mt-4" id="modal-title">플레이어 삭제 확인</h3>
+                <div class="mt-2">
+                    <p class="text-sm text-gray-500" id="modal-message">정말로 이 플레이어를 삭제하시겠습니까?</p>
                 </div>
             </div>
-            <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 rounded-b-lg">
-                <button type="button" id="confirmDeleteButton" class="inline-flex w-full justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto disabled:bg-red-300">
+            <div class="px-6 pb-6 sm:flex sm:flex-row-reverse gap-3">
+                <button type="button" id="confirmDeleteButton" class="inline-flex w-full justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:w-auto disabled:bg-red-300">
                     <span class="button-text">삭제</span>
-                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
+                    <svg class="animate-spin h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                 </button>
-                <button type="button" id="cancelDeleteButton" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">
+                <button type="button" id="cancelDeleteButton" class="mt-3 sm:mt-0 inline-flex w-full justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:w-auto">
                     취소
                 </button>
             </div>
         </div>
     </div>
 
-    <div class="container mx-auto max-w-6xl mt-12 mb-12 p-8 bg-white rounded-xl shadow-lg">
-        <h1 class="text-4xl font-bold text-gray-800 text-center mb-8">플레이어 관리</h1>
-
-        <div class="mb-6 text-right">
-            <button id="showAddPlayerForm" class="py-2 px-5 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition">
-                새 플레이어 등록
-            </button>
+    <!-- 범용 정보/확인 모달 -->
+    <div id="infoModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 hidden transition-opacity duration-300 ease-in-out" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl w-full max-w-md mx-4 transform transition-all duration-300 ease-in-out scale-95 opacity-0">
+            <div class="p-6 text-center">
+                <div id="infoModalIcon" class="mx-auto flex items-center justify-center h-12 w-12 rounded-full mb-4">
+                    <svg id="infoModalSuccessIcon" class="h-8 w-8 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    <svg id="infoModalErrorIcon" class="h-8 w-8 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    <svg id="infoModalConfirmIcon" class="h-8 w-8 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+                </div>
+                <h3 class="text-lg font-bold leading-6 text-gray-900" id="infoModalTitle"></h3>
+                <div class="mt-2">
+                    <p class="text-sm text-gray-600" id="infoModalMessage"></p>
+                </div>
+            </div>
+            <div class="px-6 pb-6 sm:flex sm:flex-row-reverse gap-3">
+                <button type="button" id="infoModalConfirmBtn" class="inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:w-auto"></button>
+                <button type="button" id="infoModalCancelBtn" class="mt-3 sm:mt-0 inline-flex w-full justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:w-auto">취소</button>
+            </div>
         </div>
+    </div>
 
-        <!-- 등록 폼 -->
-        <div id="addPlayerForm" class="hidden p-6 mb-8 bg-gray-50 border border-gray-200 rounded-lg">
-            <h3 class="text-2xl font-semibold text-gray-700 mb-6">새 플레이어 등록</h3>
-            <form id="playerForm" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                <div class="form-group"><label for="nickname" class="block text-gray-700 text-sm font-bold mb-2">닉네임:</label><input type="text" id="nickname" name="nickname" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
-                <div class="form-group">
-                    <label for="tier" class="block text-gray-700 text-sm font-bold mb-2">최고 티어:</label>
-                    <select id="tier" name="tier" required onchange="updateDivisionOptions('tier', 'divisionGroup', 'lpGroup', 'division', 'division-score')" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="IRON">아이언</option><option value="BRONZE">브론즈</option><option value="SILVER" selected>실버</option><option value="GOLD">골드</option><option value="PLATINUM">플래티넘</option><option value="EMERALD">에메랄드</option><option value="DIAMOND">다이아몬드</option><option value="MASTER">마스터</option><option value="GRANDMASTER">그랜드마스터</option><option value="CHALLENGER">챌린저</option>
-                    </select>
+    <div class="container mx-auto max-w-6xl">
+        <div class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden">
+            <div class="p-6 sm:p-8">
+                <div class="flex flex-col sm:flex-row justify-between items-center mb-8">
+                    <h1 class="text-4xl font-black text-gray-800 tracking-tight">플레이어 관리</h1>
+                    <button id="showAddPlayerForm" class="mt-4 sm:mt-0 py-2 px-5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-all duration-300">
+                        새 플레이어 등록
+                    </button>
                 </div>
-                <div class="form-group" id="divisionGroup">
-                    <label for="division" class="block text-gray-700 text-sm font-bold mb-2">디비전:</label>
-                    <select id="division" name="division_select" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="4">IV</option><option value="3">III</option><option value="2">II</option><option value="1">I</option>
-                    </select>
-                </div>
-                <div class="form-group hidden" id="lpGroup">
-                    <label for="division-score" class="block text-gray-700 text-sm font-bold mb-2">점수:</label>
-                    <input type="number" id="division-score" name="division_input" min="0" value="0" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <small class="text-xs text-gray-500 mt-1">마스터 이상 티어의 경우 점수를 입력하세요.</small>
-                </div>
-                <div class="form-group">
-                    <label for="position" class="block text-gray-700 text-sm font-bold mb-2">주 포지션:</label>
-                    <select id="position" name="position" required onchange="handleMainPositionChange(this, 'sub_position')" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        {% for pos_enum in Position %}<option value="{{ pos_enum.value }}">{{ pos_enum.name }}</option>{% endfor %}
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="sub_position" class="block text-gray-700 text-sm font-bold mb-2">부 포지션 (선택):</label>
-                    <select id="sub_position" name="sub_position" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="">선택 안함</option>
-                        {% for pos_enum in Position %}<option value="{{ pos_enum.value }}">{{ pos_enum.name }}</option>{% endfor %}
-                    </select>
-                </div>
-                <div class="md:col-span-2 flex justify-end gap-3 mt-4">
-                    <button type="submit" class="py-2 px-5 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">저장</button>
-                    <button type="button" id="cancelAddPlayer" class="py-2 px-5 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">취소</button>
-                </div>
-            </form>
-        </div>
 
-        <!-- 수정 폼 -->
-        <div id="editPlayerForm" class="hidden p-6 mb-8 bg-gray-50 border border-gray-200 rounded-lg">
-             <h3 class="text-2xl font-semibold text-gray-700 mb-6">플레이어 정보 수정</h3>
-            <form id="editForm" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                 <input type="hidden" id="edit_player_id" name="player_id">
-                 <div class="form-group"><label for="edit_nickname" class="block text-gray-700 text-sm font-bold mb-2">닉네임:</label><input type="text" id="edit_nickname" name="nickname" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
-                <div class="form-group">
-                    <label for="edit_tier" class="block text-gray-700 text-sm font-bold mb-2">최고 티어:</label>
-                    <select id="edit_tier" name="tier" required onchange="updateDivisionOptions('edit_tier', 'edit_divisionGroup', 'edit_lpGroup', 'edit_division', 'edit_division-score')" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="IRON">아이언</option><option value="BRONZE">브론즈</option><option value="SILVER">실버</option><option value="GOLD">골드</option><option value="PLATINUM">플래티넘</option><option value="EMERALD">에메랄드</option><option value="DIAMOND">다이아몬드</option><option value="MASTER">마스터</option><option value="GRANDMASTER">그랜드마스터</option><option value="CHALLENGER">챌린저</option>
-                    </select>
+                <!-- 등록/수정 폼 컨테이너 -->
+                <div id="formWrapper">
+                    <!-- 등록 폼 -->
+                    <div id="addPlayerForm" class="form-container">
+                        <div class="p-6 bg-gray-500/5 rounded-xl border border-gray-200">
+                            <h3 class="text-2xl font-bold text-gray-700 mb-6">새 플레이어 등록</h3>
+                            <form id="playerForm" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                                <div class="form-group"><label for="nickname" class="block text-gray-700 text-sm font-bold mb-2">닉네임</label><input type="text" id="nickname" name="nickname" required class="w-full px-4 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"></div>
+                                <div class="form-group"><label for="tier" class="block text-gray-700 text-sm font-bold mb-2">최고 티어</label><select id="tier" name="tier" required onchange="updateDivisionOptions('tier', 'divisionGroup', 'lpGroup', 'division', 'division-score')" class="w-full px-3 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"><option value="IRON">아이언</option><option value="BRONZE">브론즈</option><option value="SILVER" selected>실버</option><option value="GOLD">골드</option><option value="PLATINUM">플래티넘</option><option value="EMERALD">에메랄드</option><option value="DIAMOND">다이아몬드</option><option value="MASTER">마스터</option><option value="GRANDMASTER">그랜드마스터</option><option value="CHALLENGER">챌린저</option></select></div>
+                                <div class="form-group" id="divisionGroup"><label for="division" class="block text-gray-700 text-sm font-bold mb-2">디비전</label><select id="division" name="division_select" class="w-full px-3 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"><option value="4">IV</option><option value="3">III</option><option value="2">II</option><option value="1">I</option></select></div>
+                                <div class="form-group hidden" id="lpGroup"><label for="division-score" class="block text-gray-700 text-sm font-bold mb-2">점수</label><input type="number" id="division-score" name="division_input" min="0" value="0" class="w-full px-4 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"><small class="text-xs text-gray-500 mt-1">마스터 이상 티어의 경우 점수를 입력하세요.</small></div>
+                                <div class="form-group"><label for="position" class="block text-gray-700 text-sm font-bold mb-2">주 포지션</label><select id="position" name="position" required onchange="handleMainPositionChange(this, 'sub_position')" class="w-full px-3 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors">{% for pos_enum in Position %}<option value="{{ pos_enum.value }}">{{ pos_enum.name }}</option>{% endfor %}</select></div>
+                                <div class="form-group"><label for="sub_position" class="block text-gray-700 text-sm font-bold mb-2">부 포지션 (선택)</label><select id="sub_position" name="sub_position" class="w-full px-3 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"><option value="">선택 안함</option>{% for pos_enum in Position %}<option value="{{ pos_enum.value }}">{{ pos_enum.name }}</option>{% endfor %}</select></div>
+                                <div class="md:col-span-2 flex justify-end gap-3 mt-4">
+                                    <button type="submit" class="py-2 px-5 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition">저장</button>
+                                    <button type="button" id="cancelAddPlayer" class="py-2 px-5 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">취소</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <!-- 수정 폼 (동일한 구조) -->
+                    <div id="editPlayerForm" class="form-container">
+                        <div class="p-6 bg-gray-500/5 rounded-xl border border-gray-200">
+                            <h3 class="text-2xl font-bold text-gray-700 mb-6">플레이어 정보 수정</h3>
+                            <form id="editForm" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                                <input type="hidden" id="edit_player_id" name="player_id">
+                                <div class="form-group"><label for="edit_nickname" class="block text-gray-700 text-sm font-bold mb-2">닉네임</label><input type="text" id="edit_nickname" name="nickname" required class="w-full px-4 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"></div>
+                                <div class="form-group"><label for="edit_tier" class="block text-gray-700 text-sm font-bold mb-2">최고 티어</label><select id="edit_tier" name="tier" required onchange="updateDivisionOptions('edit_tier', 'edit_divisionGroup', 'edit_lpGroup', 'edit_division', 'edit_division-score')" class="w-full px-3 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"><option value="IRON">아이언</option><option value="BRONZE">브론즈</option><option value="SILVER">실버</option><option value="GOLD">골드</option><option value="PLATINUM">플래티넘</option><option value="EMERALD">에메랄드</option><option value="DIAMOND">다이아몬드</option><option value="MASTER">마스터</option><option value="GRANDMASTER">그랜드마스터</option><option value="CHALLENGER">챌린저</option></select></div>
+                                <div class="form-group" id="edit_divisionGroup"><label for="edit_division" class="block text-gray-700 text-sm font-bold mb-2">디비전</label><select id="edit_division" name="division_select" class="w-full px-3 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"><option value="4">IV</option><option value="3">III</option><option value="2">II</option><option value="1">I</option></select></div>
+                                <div class="form-group hidden" id="edit_lpGroup"><label for="edit_division-score" class="block text-gray-700 text-sm font-bold mb-2">점수</label><input type="number" id="edit_division-score" name="division_input" min="0" value="0" class="w-full px-4 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"><small class="text-xs text-gray-500 mt-1">마스터 이상 티어의 경우 점수를 입력하세요.</small></div>
+                                <div class="form-group"><label for="edit_position" class="block text-gray-700 text-sm font-bold mb-2">주 포지션</label><select id="edit_position" name="position" required onchange="handleMainPositionChange(this, 'edit_sub_position')" class="w-full px-3 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors">{% for pos_enum in Position %}<option value="{{ pos_enum.value }}">{{ pos_enum.name }}</option>{% endfor %}</select></div>
+                                <div class="form-group"><label for="edit_sub_position" class="block text-gray-700 text-sm font-bold mb-2">부 포지션 (선택)</label><select id="edit_sub_position" name="sub_position" class="w-full px-3 py-2 bg-white/80 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"><option value="">선택 안함</option>{% for pos_enum in Position %}<option value="{{ pos_enum.value }}">{{ pos_enum.name }}</option>{% endfor %}</select></div>
+                                <div class="md:col-span-2 flex justify-end gap-3 mt-4">
+                                    <button type="submit" class="py-2 px-5 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition">저장</button>
+                                    <button type="button" id="cancelEditPlayer" class="py-2 px-5 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">취소</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group" id="edit_divisionGroup">
-                    <label for="edit_division" class="block text-gray-700 text-sm font-bold mb-2">디비전:</label>
-                    <select id="edit_division" name="division_select" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="4">IV</option><option value="3">III</option><option value="2">II</option><option value="1">I</option>
-                    </select>
-                </div>
-                <div class="form-group hidden" id="edit_lpGroup">
-                    <label for="edit_division-score" class="block text-gray-700 text-sm font-bold mb-2">점수:</label>
-                    <input type="number" id="edit_division-score" name="division_input" min="0" value="0" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <small class="text-xs text-gray-500 mt-1">마스터 이상 티어의 경우 점수를 입력하세요.</small>
-                </div>
-                <div class="form-group">
-                    <label for="edit_position" class="block text-gray-700 text-sm font-bold mb-2">주 포지션:</label>
-                    <select id="edit_position" name="position" required onchange="handleMainPositionChange(this, 'edit_sub_position')" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                         {% for pos_enum in Position %}<option value="{{ pos_enum.value }}">{{ pos_enum.name }}</option>{% endfor %}
-                    </select>
-                </div>
-                 <div class="form-group">
-                    <label for="edit_sub_position" class="block text-gray-700 text-sm font-bold mb-2">부 포지션 (선택):</label>
-                    <select id="edit_sub_position" name="sub_position" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="">선택 안함</option>
-                         {% for pos_enum in Position %}<option value="{{ pos_enum.value }}">{{ pos_enum.name }}</option>{% endfor %}
-                    </select>
-                </div>
-                <div class="md:col-span-2 flex justify-end gap-3 mt-4">
-                    <button type="submit" class="py-2 px-5 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">저장</button>
-                    <button type="button" id="cancelEditPlayer" class="py-2 px-5 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600">취소</button>
-                </div>
-            </form>
-        </div>
 
-        <!-- 플레이어 목록 테이블 -->
-        <div class="overflow-x-auto relative shadow-md sm:rounded-lg">
-            <table id="player-table" class="w-full text-sm text-left text-gray-500">
-                <thead class="text-xs text-gray-700 uppercase bg-gray-100">
-                    <tr>
-                        <th scope="col" class="py-3 px-6">닉네임</th><th scope="col" class="py-3 px-6">주 포지션</th><th scope="col" class="py-3 px-6">부 포지션</th><th scope="col" class="py-3 px-6">최고 티어</th><th scope="col" class="py-3 px-6">매칭 점수</th><th scope="col" class="py-3 px-6">전적</th><th scope="col" class="py-3 px-6">등록일</th><th scope="col" class="py-3 px-6 text-center">작업</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for player in players %}
-                        <tr class="bg-white border-b hover:bg-gray-50" data-player-id="{{ player.id }}"
-                            data-nickname="{{ player.nickname }}" data-tier="{{ player.tier.value }}"
-                            data-division="{{ player.division }}" data-lp="{{ player.lp }}"
-                            data-position="{{ player.position.value }}" data-sub-position="{{ player.sub_position.value if player.sub_position else '' }}">
-                            <td class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">{{ player.nickname }}</td>
-                            <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full {{ POSITION_COLOR_MAP.get(player.position.value, 'bg-gray-400 text-white') }}">{{ player.position.value }}</span></td>
-                            <td class="py-4 px-6">
-                                {% if player.sub_position %}<span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-400 text-white">{{ player.sub_position.value }}</span>{% else %}-{% endif %}
-                            </td>
-                            <td class="py-4 px-6">
-                                <span class="px-2 py-1 text-xs font-semibold rounded-full {{ TIER_COLOR_MAP.get(player.tier.value, 'bg-gray-200') }}">
-                                    {{ player.tier.value }} {% if player.tier.value not in ['MASTER', 'GRANDMASTER', 'CHALLENGER'] %}{% if player.division == 1 %}I{% elif player.division == 2 %}II{% elif player.division == 3 %}III{% elif player.division == 4 %}IV{% endif %}{% else %}{{ player.division }}{% endif %}
-                                </span>
-                            </td>
-                            <td class="py-4 px-6 font-bold text-gray-700">{{ "%.1f"|format(player.match_score) }}</td>
-                            <td class="py-4 px-6">{{ player.win_count }}승 {{ player.lose_count }}패</td>
-                            <td class="py-4 px-6">{{ player.created_at.strftime('%Y-%m-%d') }}</td>
-                            <td class="py-4 px-6 text-center">
-                                <button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-player-id="{{ player.id }}">수정</button>
-                                <button class="delete-btn font-medium text-red-600 hover:underline" data-player-id="{{ player.id }}" data-player-nickname="{{ player.nickname }}">삭제</button>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+                <!-- 플레이어 목록 테이블 -->
+                <div class="overflow-x-auto">
+                    <table id="player-table" class="w-full text-sm text-left text-gray-600">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-500/10">
+                            <tr>
+                                <th scope="col" class="py-3 px-6 rounded-l-lg">닉네임</th><th scope="col" class="py-3 px-6">주 포지션</th><th scope="col" class="py-3 px-6">부 포지션</th><th scope="col" class="py-3 px-6">최고 티어</th><th scope="col" class="py-3 px-6">매칭 점수</th><th scope="col" class="py-3 px-6">전적</th><th scope="col" class="py-3 px-6">등록일</th><th scope="col" class="py-3 px-6 text-center rounded-r-lg">작업</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for player in players %}
+                                <tr class="bg-white/0 border-b border-gray-200/50 hover:bg-gray-500/10" data-player-id="{{ player.id }}"
+                                    data-nickname="{{ player.nickname }}" data-tier="{{ player.tier.value }}"
+                                    data-division="{{ player.division }}" data-lp="{{ player.lp }}"
+                                    data-position="{{ player.position.value }}" data-sub-position="{{ player.sub_position.value if player.sub_position else '' }}">
+                                    <td class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">{{ player.nickname }}</td>
+                                    <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full {{ POSITION_COLOR_MAP.get(player.position.value, 'bg-gray-400 text-white') }}">{{ player.position.value }}</span></td>
+                                    <td class="py-4 px-6">{% if player.sub_position %}<span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-400 text-white">{{ player.sub_position.value }}</span>{% else %}-{% endif %}</td>
+                                    <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full {{ TIER_COLOR_MAP.get(player.tier.value, 'bg-gray-200') }}">{{ player.tier.value }} {% if player.tier.value not in ['MASTER', 'GRANDMASTER', 'CHALLENGER'] %}{% if player.division == 1 %}I{% elif player.division == 2 %}II{% elif player.division == 3 %}III{% elif player.division == 4 %}IV{% endif %}{% else %}{{ player.division }}{% endif %}</span></td>
+                                    <td class="py-4 px-6 font-bold text-gray-700">{{ "%.1f"|format(player.match_score) }}</td>
+                                    <td class="py-4 px-6">{{ player.win_count }}승 {{ player.lose_count }}패</td>
+                                    <td class="py-4 px-6">{{ player.created_at.strftime('%Y-%m-%d') }}</td>
+                                    <td class="py-4 px-6 text-center">
+                                        <button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-player-id="{{ player.id }}">수정</button>
+                                        <button class="delete-btn font-medium text-red-600 hover:underline" data-player-id="{{ player.id }}" data-player-nickname="{{ player.nickname }}">삭제</button>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
 
-        <div class="mt-12 text-center">
-            <a href="/" class="inline-block py-2 px-6 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75 transition">메인으로 돌아가기</a>
+                <div class="mt-12 border-t border-gray-200/50 pt-8 text-center">
+                    <a href="/" class="text-gray-500 hover:text-blue-600 font-semibold transition-colors duration-300">메인으로 돌아가기</a>
+                </div>
+            </div>
         </div>
     </div>
     <script>
+        function showInfoModal(title, message, type = 'info', onConfirm = null) {
+            const modal = document.getElementById('infoModal');
+            const modalContent = modal.querySelector('div.transform');
+            const modalTitle = document.getElementById('infoModalTitle');
+            const modalMessage = document.getElementById('infoModalMessage');
+            const modalIconContainer = document.getElementById('infoModalIcon');
+            const successIcon = document.getElementById('infoModalSuccessIcon');
+            const errorIcon = document.getElementById('infoModalErrorIcon');
+            const confirmIcon = document.getElementById('infoModalConfirmIcon');
+            const confirmBtn = document.getElementById('infoModalConfirmBtn');
+            const cancelBtn = document.getElementById('infoModalCancelBtn');
+            const newConfirmBtn = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+            modalTitle.textContent = title;
+            modalMessage.innerHTML = message;
+            successIcon.classList.add('hidden');
+            errorIcon.classList.add('hidden');
+            confirmIcon.classList.add('hidden');
+            modalIconContainer.className = 'mx-auto flex items-center justify-center h-12 w-12 rounded-full mb-4';
+            switch (type) {
+                case 'success':
+                    modalIconContainer.classList.add('bg-green-100');
+                    successIcon.classList.remove('hidden');
+                    newConfirmBtn.textContent = '확인';
+                    newConfirmBtn.className = 'inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:w-auto bg-green-600 hover:bg-green-500';
+                    cancelBtn.classList.add('hidden');
+                    break;
+                case 'error':
+                    modalIconContainer.classList.add('bg-red-100');
+                    errorIcon.classList.remove('hidden');
+                    newConfirmBtn.textContent = '확인';
+                    newConfirmBtn.className = 'inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:w-auto bg-red-600 hover:bg-red-500';
+                    cancelBtn.classList.add('hidden');
+                    break;
+                case 'confirm':
+                    modalIconContainer.classList.add('bg-yellow-100');
+                    confirmIcon.classList.remove('hidden');
+                    newConfirmBtn.textContent = '확인';
+                    newConfirmBtn.className = 'inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:w-auto bg-blue-600 hover:bg-blue-500';
+                    cancelBtn.classList.remove('hidden');
+                    break;
+            }
+            const closeModal = () => {
+                modalContent.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            };
+            newConfirmBtn.addEventListener('click', () => {
+                closeModal();
+                if (typeof onConfirm === 'function') {
+                    onConfirm();
+                }
+            });
+            cancelBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                modalContent.classList.remove('scale-95', 'opacity-0');
+            }, 10);
+        }
+
         function updateDivisionOptions(tierElementId, divisionGroupElementId, lpGroupElementId, divisionSelectId, divisionInputId) {
             const tierSelect = document.getElementById(tierElementId);
             const divisionGroup = document.getElementById(divisionGroupElementId);
@@ -208,26 +255,27 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            const showAddPlayerForm = document.getElementById('showAddPlayerForm');
+            const showAddPlayerFormBtn = document.getElementById('showAddPlayerForm');
             const addPlayerFormDiv = document.getElementById('addPlayerForm');
-            const cancelAddPlayer = document.getElementById('cancelAddPlayer');
             const editPlayerFormDiv = document.getElementById('editPlayerForm');
+            const cancelAddPlayer = document.getElementById('cancelAddPlayer');
             const cancelEditPlayer = document.getElementById('cancelEditPlayer');
 
-            const toggleFormVisibility = (showAdd, showEdit) => {
-                addPlayerFormDiv.classList.toggle('hidden', !showAdd);
-                editPlayerFormDiv.classList.toggle('hidden', !showEdit);
-                showAddPlayerForm.classList.toggle('hidden', showAdd || showEdit);
+            const toggleFormVisibility = (formDiv) => {
+                const otherForm = formDiv === addPlayerFormDiv ? editPlayerFormDiv : addPlayerFormDiv;
+                otherForm.classList.remove('open');
+                formDiv.classList.toggle('open');
             };
 
-            showAddPlayerForm.addEventListener('click', () => {
-                toggleFormVisibility(true, false);
+            showAddPlayerFormBtn.addEventListener('click', () => {
+                toggleFormVisibility(addPlayerFormDiv);
                 document.getElementById('playerForm').reset();
                 updateDivisionOptions('tier', 'divisionGroup', 'lpGroup', 'division', 'division-score');
                 handleMainPositionChange(document.getElementById('position'), 'sub_position');
             });
-            cancelAddPlayer.addEventListener('click', () => toggleFormVisibility(false, false));
-            cancelEditPlayer.addEventListener('click', () => toggleFormVisibility(false, false));
+
+            cancelAddPlayer.addEventListener('click', () => addPlayerFormDiv.classList.remove('open'));
+            cancelEditPlayer.addEventListener('click', () => editPlayerFormDiv.classList.remove('open'));
 
             document.querySelectorAll('.edit-btn').forEach(button => {
                 button.addEventListener('click', function() {
@@ -249,16 +297,17 @@
                     mainPosSelect.value = playerRow.dataset.position;
                     handleMainPositionChange(mainPosSelect, 'edit_sub_position');
                     document.getElementById('edit_sub_position').value = playerRow.dataset.subPosition || "";
-                    toggleFormVisibility(false, true);
-                    window.scrollTo({ top: editPlayerFormDiv.offsetTop - 20, behavior: 'smooth' });
+
+                    toggleFormVisibility(editPlayerFormDiv);
+
+                    editPlayerFormDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 });
             });
 
-            // --- 새로운 모달 및 삭제 로직 ---
             const modal = document.getElementById('deleteConfirmModal');
             const confirmBtn = document.getElementById('confirmDeleteButton');
             const cancelBtn = document.getElementById('cancelDeleteButton');
-            const modalContent = modal.querySelector('div');
+            const modalContent = modal.querySelector('div.transform');
             const modalMessage = document.getElementById('modal-message');
             const playerTable = document.getElementById('player-table');
 
@@ -272,15 +321,9 @@
                     modalContent.classList.remove('scale-95', 'opacity-0');
                 }, 10);
             };
-
             const closeModal = () => {
-                modal.classList.add('opacity-0');
                 modalContent.classList.add('scale-95', 'opacity-0');
-                setTimeout(() => {
-                    modal.classList.add('hidden');
-                    playerIdToDelete = null;
-                    elementToDelete = null;
-                }, 300);
+                setTimeout(() => modal.classList.add('hidden'), 300);
             };
 
             const setLoadingState = (isLoading) => {
@@ -291,25 +334,21 @@
 
             const handleDelete = async () => {
                 if (!playerIdToDelete) return;
-
                 setLoadingState(true);
                 try {
-                    const response = await fetch(`/players/${playerIdToDelete}`, {
-                        method: 'DELETE',
-                        credentials: 'same-origin'
-                    });
+                    const response = await fetch(`/players/${playerIdToDelete}`, { method: 'DELETE', credentials: 'same-origin' });
                     if (response.ok) {
                         if (elementToDelete) {
-                            elementToDelete.style.transition = 'opacity 0.5s ease';
-                            elementToDelete.style.opacity = '0';
+                            elementToDelete.classList.add('opacity-0', 'transition-opacity', 'duration-500');
                             setTimeout(() => elementToDelete.remove(), 500);
                         }
+                        showInfoModal('삭제 완료', '플레이어가 성공적으로 삭제되었습니다.', 'success');
                     } else {
                         const error = await response.json().catch(() => ({ detail: "플레이어 삭제 중 오류 발생" }));
-                        alert(error.detail || '플레이어 삭제 중 오류가 발생했습니다.');
+                        showInfoModal('오류', error.detail || '플레이어 삭제 중 오류가 발생했습니다.', 'error');
                     }
                 } catch (err) {
-                    alert('서버 연결 오류가 발생했습니다.');
+                    showInfoModal('연결 오류', '서버 연결 오류가 발생했습니다.', 'error');
                     console.error(err);
                 } finally {
                     setLoadingState(false);
@@ -332,9 +371,7 @@
 
             if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
             if (confirmBtn) confirmBtn.addEventListener('click', handleDelete);
-            if (modal) modal.addEventListener('click', (event) => {
-                if (event.target === modal) closeModal();
-            });
+            if (modal) modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
 
             async function handlePlayerFormSubmit(formId, url, method, successMessage) {
                 const form = document.getElementById(formId);
@@ -343,33 +380,23 @@
                 let divisionPayload = isMasterPlus ? (parseInt(form.querySelector('[name="division_input"]').value) || 0) : parseInt(form.querySelector('[name="division_select"]').value);
                 let subPositionValue = form.querySelector('[name="sub_position"]').value;
                 if (form.querySelector('[name="position"]').value === "ALL") { subPositionValue = null; }
-                const formData = {
-                    nickname: form.querySelector('[name="nickname"]').value,
-                    tier: tier, division: divisionPayload,
-                    position: form.querySelector('[name="position"]').value,
-                    sub_position: subPositionValue === "" ? null : subPositionValue,
-                    lp: 0
-                };
+                const formData = { nickname: form.querySelector('[name="nickname"]').value, tier: tier, division: divisionPayload, position: form.querySelector('[name="position"]').value, sub_position: subPositionValue === "" ? null : subPositionValue, lp: 0 };
                 try {
-                    const response = await fetch(url, {
-                        method: method, headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(formData), credentials: 'same-origin'
-                    });
+                    const response = await fetch(url, { method: method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(formData), credentials: 'same-origin' });
                     const responseData = await response.json();
-                    if (response.ok) { alert(successMessage); window.location.reload(); }
-                    else { alert(responseData.detail || '오류가 발생했습니다.'); }
-                } catch (err) { alert('서버 연결 오류 또는 응답 처리 오류.'); console.error(err); }
+                    if (response.ok) {
+                        showInfoModal('성공', successMessage, 'success', () => { window.location.reload(); });
+                    } else {
+                        showInfoModal('오류', responseData.detail || '오류가 발생했습니다.', 'error');
+                    }
+                } catch (err) {
+                    showInfoModal('연결 오류', '서버 연결 오류 또는 응답 처리 오류.', 'error');
+                    console.error(err);
+                }
             }
 
-            document.getElementById('playerForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                handlePlayerFormSubmit('playerForm', `/players/`, 'POST', '플레이어가 등록되었습니다!');
-            });
-            document.getElementById('editForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                const playerId = document.getElementById('edit_player_id').value;
-                handlePlayerFormSubmit('editForm', `/players/${playerId}`, 'PUT', '플레이어 정보가 수정되었습니다!');
-            });
+            document.getElementById('playerForm').addEventListener('submit', function(e) { e.preventDefault(); handlePlayerFormSubmit('playerForm', `/players/`, 'POST', '플레이어가 등록되었습니다!'); });
+            document.getElementById('editForm').addEventListener('submit', function(e) { e.preventDefault(); const playerId = document.getElementById('edit_player_id').value; handlePlayerFormSubmit('editForm', `/players/${playerId}`, 'PUT', '플레이어 정보가 수정되었습니다!'); });
         });
     </script>
 </body>

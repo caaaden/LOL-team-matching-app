@@ -5,137 +5,220 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>매치 상세 - LoL 팀 매칭 시스템</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts 추가 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
+        }
+    </style>
 </head>
-<body class="bg-gray-100 font-sans">
-
+<body class="py-12 px-4">
     <!-- 삭제 확인 모달 -->
-    <div id="deleteConfirmModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden transition-opacity duration-300 ease-in-out" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 transform transition-all duration-300 ease-in-out scale-95 opacity-0">
-            <div class="p-6">
-                <div class="flex items-start">
-                    <div class="flex-shrink-0 mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                        <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                        </svg>
-                    </div>
-                    <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                        <h3 class="text-lg font-semibold leading-6 text-gray-900" id="modal-title">매치 삭제 확인</h3>
-                        <div class="mt-2">
-                            <p class="text-sm text-gray-500" id="modal-message">정말로 이 매치를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</p>
-                        </div>
-                    </div>
-                </div>
+    <div id="deleteConfirmModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 hidden transition-opacity duration-300 ease-in-out" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl w-full max-w-md mx-4 transform transition-all duration-300 ease-in-out scale-95 opacity-0">
+            <div class="p-6 text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100"><svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg></div>
+                <h3 class="text-lg font-semibold leading-6 text-gray-900 mt-4" id="modal-title">매치 삭제 확인</h3>
+                <div class="mt-2"><p class="text-sm text-gray-500" id="modal-message">정말로 이 매치를 삭제하시겠습니까?</p></div>
             </div>
-            <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 rounded-b-lg">
-                <button type="button" id="confirmDeleteButton" class="inline-flex w-full justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto disabled:bg-red-300">
-                    <span class="button-text">삭제</span>
-                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                </button>
-                <button type="button" id="cancelDeleteButton" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">
-                    취소
-                </button>
+            <div class="px-6 pb-6 sm:flex sm:flex-row-reverse gap-3">
+                <button type="button" id="confirmDeleteButton" class="inline-flex w-full justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:w-auto disabled:bg-red-300"><span class="button-text">삭제</span><svg class="animate-spin h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></button>
+                <button type="button" id="cancelDeleteButton" class="mt-3 sm:mt-0 inline-flex w-full justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:w-auto">취소</button>
             </div>
         </div>
     </div>
 
-    <div class="container mx-auto max-w-5xl mt-12 mb-12 p-8 bg-white rounded-xl shadow-lg">
-        <div class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-gray-800">매치 상세 정보</h1>
-            <p class="text-gray-500 mt-2">{{ match.match_date.strftime('%Y년 %m월 %d일 %H:%M') }}</p>
-        </div>
-
-        <div class="mb-8 p-6 bg-slate-50 border border-slate-200 rounded-lg">
-            {% if match.winner %}
-            <div class="text-center">
-                <h3 class="text-2xl font-bold">
-                    <span class="{{ 'text-blue-600' if match.winner == 'BLUE' else 'text-red-600' }}">
-                        {{ "블루팀" if match.winner == "BLUE" else "레드팀" }}
-                    </span>
-                    승리!
-                </h3>
-            </div>
-            {% else %}
-            <div class="text-center">
-                <h3 class="text-2xl font-semibold text-gray-700 mb-4">게임 결과 등록</h3>
-                <div class="flex justify-center gap-6">
-                    <button class="py-3 px-8 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition-transform transform hover:scale-105" onclick="registerMatchResult('BLUE')">블루팀 승리</button>
-                    <button class="py-3 px-8 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 transition-transform transform hover:scale-105" onclick="registerMatchResult('RED')">레드팀 승리</button>
+    <!-- 범용 정보/확인 모달 -->
+    <div id="infoModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 hidden transition-opacity duration-300 ease-in-out" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl w-full max-w-md mx-4 transform transition-all duration-300 ease-in-out scale-95 opacity-0">
+            <div class="p-6 text-center">
+                <div id="infoModalIcon" class="mx-auto flex items-center justify-center h-12 w-12 rounded-full mb-4">
+                    <svg id="infoModalSuccessIcon" class="h-8 w-8 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    <svg id="infoModalErrorIcon" class="h-8 w-8 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    <svg id="infoModalConfirmIcon" class="h-8 w-8 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+                </div>
+                <h3 class="text-lg font-bold leading-6 text-gray-900" id="infoModalTitle"></h3>
+                <div class="mt-2">
+                    <p class="text-sm text-gray-600" id="infoModalMessage"></p>
                 </div>
             </div>
-            {% endif %}
+            <div class="px-6 pb-6 sm:flex sm:flex-row-reverse gap-3">
+                <button type="button" id="infoModalConfirmBtn" class="inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:w-auto"></button>
+                <button type="button" id="infoModalCancelBtn" class="mt-3 sm:mt-0 inline-flex w-full justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:w-auto">취소</button>
+            </div>
         </div>
+    </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div class="team-blue">
-                <h2 class="text-2xl font-bold text-white bg-blue-600 p-3 rounded-t-lg text-center">블루 팀</h2>
-                <div class="border border-t-0 border-gray-200 rounded-b-lg divide-y divide-gray-200">
-                    {% for info in blue_team_info %}
-                    <div class="p-4 flex items-center gap-4">
-                        <span class="font-bold text-sm text-center rounded px-3 py-1 w-20 {{ POSITION_COLOR_MAP.get(info.assigned_pos_value, 'bg-gray-400 text-white') }}">{{ info.assigned_pos_value }}</span>
-                        <div class="flex-grow">
-                            <p class="font-bold text-lg text-gray-800">{{ info.player.nickname }}</p>
-                            <div class="flex items-center gap-2 mt-1">
-                                <span class="text-sm font-semibold {{ TIER_COLOR_MAP.get(info.player.tier.value, 'bg-gray-200') }} rounded px-2 py-0.5 inline-block">{{ info.player.tier.value }} {% if info.player.tier.value not in ['MASTER', 'GRANDMASTER', 'CHALLENGER'] %}{% if info.player.division == 1 %}I{% elif info.player.division == 2 %}II{% elif info.player.division == 3 %}III{% elif info.player.division == 4 %}IV{% endif %}{% else %}{{ info.player.division }}{% endif %}</span>
-                                <span class="text-xs text-gray-500">매칭점수: {{ "%.0f"|format(info.player.match_score) }}</span>
-                            </div>
+    <div class="container mx-auto max-w-5xl">
+        <div class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden">
+            <div class="p-6 sm:p-8">
+                <div class="text-center mb-8">
+                    <h1 class="text-4xl font-black text-gray-800 tracking-tight">매치 상세 정보</h1>
+                    <p class="text-gray-500 mt-2">{{ match.match_date.strftime('%Y년 %m월 %d일 %H:%M') }}</p>
+                </div>
+
+                <div class="mb-8 p-6 bg-gray-500/5 rounded-xl border border-gray-200">
+                    {% if match.winner %}
+                    <div class="text-center">
+                        <h3 class="text-3xl font-bold">
+                            <span class="bg-clip-text text-transparent {{ 'bg-gradient-to-r from-blue-500 to-sky-400' if match.winner == 'BLUE' else 'bg-gradient-to-r from-red-500 to-orange-400' }}">
+                                {{ "블루팀" if match.winner == "BLUE" else "레드팀" }}
+                            </span>
+                            승리!
+                        </h3>
+                        <p class="text-gray-500 mt-2">결과가 성공적으로 기록되었습니다.</p>
+                    </div>
+                    {% else %}
+                    <div class="text-center">
+                        <h3 class="text-2xl font-bold text-gray-700 mb-4">게임 결과 등록</h3>
+                        <div class="flex justify-center gap-4 sm:gap-6">
+                            <button class="py-3 px-8 bg-blue-600 text-white font-bold rounded-lg shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300" onclick="registerMatchResult('BLUE')">블루팀 승리</button>
+                            <button class="py-3 px-8 bg-red-600 text-white font-bold rounded-lg shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300" onclick="registerMatchResult('RED')">레드팀 승리</button>
                         </div>
                     </div>
-                    {% endfor %}
+                    {% endif %}
                 </div>
-            </div>
-            <div class="team-red">
-                <h2 class="text-2xl font-bold text-white bg-red-600 p-3 rounded-t-lg text-center">레드 팀</h2>
-                <div class="border border-t-0 border-gray-200 rounded-b-lg divide-y divide-gray-200">
-                    {% for info in red_team_info %}
-                    <div class="p-4 flex items-center gap-4">
-                        <span class="font-bold text-sm text-center rounded px-3 py-1 w-20 {{ POSITION_COLOR_MAP.get(info.assigned_pos_value, 'bg-gray-400 text-white') }}">{{ info.assigned_pos_value }}</span>
-                        <div class="flex-grow">
-                            <p class="font-bold text-lg text-gray-800">{{ info.player.nickname }}</p>
-                            <div class="flex items-center gap-2 mt-1">
-                                <span class="text-sm font-semibold {{ TIER_COLOR_MAP.get(info.player.tier.value, 'bg-gray-200') }} rounded px-2 py-0.5 inline-block">{{ info.player.tier.value }} {% if info.player.tier.value not in ['MASTER', 'GRANDMASTER', 'CHALLENGER'] %}{% if info.player.division == 1 %}I{% elif info.player.division == 2 %}II{% elif info.player.division == 3 %}III{% elif info.player.division == 4 %}IV{% endif %}{% else %}{{ info.player.division }}{% endif %}</span>
-                                <span class="text-xs text-gray-500">매칭점수: {{ "%.0f"|format(info.player.match_score) }}</span>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="team-blue bg-blue-500/10 rounded-xl p-1">
+                        <h2 class="text-2xl font-bold text-white bg-blue-600 p-3 rounded-t-lg text-center">블루 팀</h2>
+                        <div class="divide-y divide-blue-200/50">
+                            {% for info in blue_team_info %}
+                            <div class="p-4 flex items-center gap-4">
+                                <span class="font-bold text-sm text-center rounded px-3 py-1 w-20 shadow-sm {{ POSITION_COLOR_MAP.get(info.assigned_pos_value, 'bg-gray-400 text-white') }}">{{ info.assigned_pos_value }}</span>
+                                <div class="flex-grow">
+                                    <p class="font-bold text-lg text-gray-800">{{ info.player.nickname }}</p>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <span class="text-sm font-semibold {{ TIER_COLOR_MAP.get(info.player.tier.value, 'bg-gray-200') }} rounded px-2 py-0.5 inline-block">{{ info.player.tier.value }} {% if info.player.tier.value not in ['MASTER', 'GRANDMASTER', 'CHALLENGER'] %}{% if info.player.division == 1 %}I{% elif info.player.division == 2 %}II{% elif info.player.division == 3 %}III{% elif info.player.division == 4 %}IV{% endif %}{% else %}{{ info.player.division }}{% endif %}</span>
+                                        <span class="text-xs text-gray-500">매칭점수: {{ "%.0f"|format(info.player.match_score) }}</span>
+                                    </div>
+                                </div>
                             </div>
+                            {% endfor %}
                         </div>
                     </div>
-                    {% endfor %}
+                    <div class="team-red bg-red-500/10 rounded-xl p-1">
+                        <h2 class="text-2xl font-bold text-white bg-red-600 p-3 rounded-t-lg text-center">레드 팀</h2>
+                        <div class="divide-y divide-red-200/50">
+                            {% for info in red_team_info %}
+                            <div class="p-4 flex items-center gap-4">
+                                <span class="font-bold text-sm text-center rounded px-3 py-1 w-20 shadow-sm {{ POSITION_COLOR_MAP.get(info.assigned_pos_value, 'bg-gray-400 text-white') }}">{{ info.assigned_pos_value }}</span>
+                                <div class="flex-grow">
+                                    <p class="font-bold text-lg text-gray-800">{{ info.player.nickname }}</p>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <span class="text-sm font-semibold {{ TIER_COLOR_MAP.get(info.player.tier.value, 'bg-gray-200') }} rounded px-2 py-0.5 inline-block">{{ info.player.tier.value }} {% if info.player.tier.value not in ['MASTER', 'GRANDMASTER', 'CHALLENGER'] %}{% if info.player.division == 1 %}I{% elif info.player.division == 2 %}II{% elif info.player.division == 3 %}III{% elif info.player.division == 4 %}IV{% endif %}{% else %}{{ info.player.division }}{% endif %}</span>
+                                        <span class="text-xs text-gray-500">매칭점수: {{ "%.0f"|format(info.player.match_score) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-12 border-t border-gray-200/50 pt-8 flex justify-center items-center gap-4 flex-wrap">
+                    <a href="{{ url_for('match_maker_page') }}" class="py-2 px-5 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-all duration-300">새 매치 만들기</a>
+                    {% if not match.is_completed %}
+                    <button id="deleteMatchBtn" class="py-2 px-5 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-all duration-300">매치 삭제</button>
+                    {% endif %}
+                    <a href="{{ url_for('home') }}" class="py-2 px-5 bg-gray-200 text-gray-700 font-semibold rounded-lg shadow-sm hover:bg-gray-300 transition-all duration-300">메인으로</a>
                 </div>
             </div>
-        </div>
-
-        <div class="mt-12 flex justify-center items-center gap-4 flex-wrap">
-            <a href="{{ url_for('match_maker_page') }}" class="py-2 px-6 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition">새 매치 만들기</a>
-            {% if not match.is_completed %}
-            <button id="deleteMatchBtn" class="py-2 px-6 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition">매치 삭제</button>
-            {% endif %}
-            <a href="{{ url_for('home') }}" class="py-2 px-6 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition">메인으로 돌아가기</a>
         </div>
     </div>
     <script>
-        async function registerMatchResult(winner) {
-            if (!confirm(`정말로 ${winner === 'BLUE' ? '블루팀' : '레드팀'}의 승리로 등록하시겠습니까?`)) return;
-            try {
-                const currentPayload = { match_id: {{ match.id }}, winner: winner };
-                const response = await fetch(`/match/{{ match.id }}/result`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(currentPayload),
-                    credentials: 'same-origin'
-                });
-                if (response.ok) {
-                    const resultData = await response.json();
-                    alert(resultData.message ||'게임 결과가 등록되었습니다!');
-                    window.location.reload();
-                } else {
-                    const errorData = await response.json().catch(() => ({detail: "결과 등록 중 오류 발생 (JSON 파싱 실패)"}));
-                    alert(errorData.detail || "결과 등록 중 알 수 없는 오류");
-                }
-            } catch (error) {
-                console.error("API 호출 중 오류:", error);
-                alert('서버 연결 중 오류가 발생했습니다.');
+        function showInfoModal(title, message, type = 'info', onConfirm = null) {
+            const modal = document.getElementById('infoModal');
+            const modalContent = modal.querySelector('div.transform');
+            const modalTitle = document.getElementById('infoModalTitle');
+            const modalMessage = document.getElementById('infoModalMessage');
+            const modalIconContainer = document.getElementById('infoModalIcon');
+            const successIcon = document.getElementById('infoModalSuccessIcon');
+            const errorIcon = document.getElementById('infoModalErrorIcon');
+            const confirmIcon = document.getElementById('infoModalConfirmIcon');
+            const confirmBtn = document.getElementById('infoModalConfirmBtn');
+            const cancelBtn = document.getElementById('infoModalCancelBtn');
+            const newConfirmBtn = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+            modalTitle.textContent = title;
+            modalMessage.innerHTML = message;
+            successIcon.classList.add('hidden');
+            errorIcon.classList.add('hidden');
+            confirmIcon.classList.add('hidden');
+            modalIconContainer.className = 'mx-auto flex items-center justify-center h-12 w-12 rounded-full mb-4';
+            switch (type) {
+                case 'success':
+                    modalIconContainer.classList.add('bg-green-100');
+                    successIcon.classList.remove('hidden');
+                    newConfirmBtn.textContent = '확인';
+                    newConfirmBtn.className = 'inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:w-auto bg-green-600 hover:bg-green-500';
+                    cancelBtn.classList.add('hidden');
+                    break;
+                case 'error':
+                    modalIconContainer.classList.add('bg-red-100');
+                    errorIcon.classList.remove('hidden');
+                    newConfirmBtn.textContent = '확인';
+                    newConfirmBtn.className = 'inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:w-auto bg-red-600 hover:bg-red-500';
+                    cancelBtn.classList.add('hidden');
+                    break;
+                case 'confirm':
+                    modalIconContainer.classList.add('bg-yellow-100');
+                    confirmIcon.classList.remove('hidden');
+                    newConfirmBtn.textContent = '확인';
+                    newConfirmBtn.className = 'inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:w-auto bg-blue-600 hover:bg-blue-500';
+                    cancelBtn.classList.remove('hidden');
+                    break;
             }
+            const closeModal = () => {
+                modalContent.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            };
+            newConfirmBtn.addEventListener('click', () => {
+                closeModal();
+                if (typeof onConfirm === 'function') {
+                    onConfirm();
+                }
+            });
+            cancelBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                modalContent.classList.remove('scale-95', 'opacity-0');
+            }, 10);
+        }
+
+        async function registerMatchResult(winner) {
+            const teamName = winner === 'BLUE' ? '블루팀' : '레드팀';
+            showInfoModal(
+                '결과 등록 확인',
+                `정말로 ${teamName}의 승리로 등록하시겠습니까?`,
+                'confirm',
+                async () => {
+                    try {
+                        const currentPayload = { match_id: {{ match.id }}, winner: winner };
+                        const response = await fetch(`/match/{{ match.id }}/result`, {
+                            method: 'POST', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(currentPayload), credentials: 'same-origin'
+                        });
+                        if (response.ok) {
+                            const resultData = await response.json();
+                            showInfoModal('등록 완료', resultData.message || '게임 결과가 등록되었습니다!', 'success', () => {
+                                window.location.reload();
+                            });
+                        } else {
+                            const errorData = await response.json().catch(() => ({detail: "결과 등록 중 오류"}));
+                            showInfoModal('오류', errorData.detail, 'error');
+                        }
+                    } catch (error) {
+                        showInfoModal('연결 오류', '서버 연결 중 오류가 발생했습니다.', 'error');
+                    }
+                }
+            );
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -143,70 +226,51 @@
             const modal = document.getElementById('deleteConfirmModal');
             const confirmBtn = document.getElementById('confirmDeleteButton');
             const cancelBtn = document.getElementById('cancelDeleteButton');
-            const modalContent = modal.querySelector('div');
 
             const openModal = () => {
+                const modalContent = modal.querySelector('div.transform');
                 modal.classList.remove('hidden');
                 setTimeout(() => {
                     modal.classList.remove('opacity-0');
-                    modalContent.classList.remove('scale-95', 'opacity-0');
+                    if(modalContent) modalContent.classList.remove('scale-95', 'opacity-0');
                 }, 10);
             };
-
             const closeModal = () => {
+                const modalContent = modal.querySelector('div.transform');
+                if(modalContent) modalContent.classList.add('scale-95', 'opacity-0');
                 modal.classList.add('opacity-0');
-                modalContent.classList.add('scale-95', 'opacity-0');
-                setTimeout(() => {
-                    modal.classList.add('hidden');
-                }, 300);
+                setTimeout(() => modal.classList.add('hidden'), 300);
             };
-
             const setLoadingState = (isLoading) => {
                 confirmBtn.disabled = isLoading;
                 confirmBtn.querySelector('.button-text').classList.toggle('hidden', isLoading);
                 confirmBtn.querySelector('svg').classList.toggle('hidden', !isLoading);
             };
-
             const handleDelete = async () => {
                 setLoadingState(true);
                 try {
-                    const response = await fetch(`/match/{{ match.id }}`, {
-                        method: 'DELETE',
-                        credentials: 'same-origin'
-                    });
+                    const response = await fetch(`/match/{{ match.id }}`, { method: 'DELETE', credentials: 'same-origin' });
                     if (response.ok) {
                         const result = await response.json();
-                        alert(result.message || '매치가 삭제되었습니다.');
-                        window.location.href = "{{ url_for('match_maker_page') }}";
+                        showInfoModal('삭제 완료', result.message || '매치가 삭제되었습니다.', 'success', () => {
+                            window.location.href = "{{ url_for('match_maker_page') }}";
+                        });
                     } else {
-                        const errorData = await response.json().catch(() => ({detail: "매치 삭제 중 오류 발생"}));
-                        alert(errorData.detail || "매치 삭제 중 알 수 없는 오류");
+                        const errorData = await response.json().catch(() => ({detail: "매치 삭제 중 오류"}));
+                        showInfoModal('오류', errorData.detail, 'error');
                     }
                 } catch (error) {
-                    console.error("매치 삭제 API 호출 오류:", error);
-                    alert('서버 연결 중 오류가 발생했습니다.');
+                    showInfoModal('연결 오류', '서버 연결 중 오류가 발생했습니다.', 'error');
                 } finally {
                     setLoadingState(false);
                     closeModal();
                 }
             };
 
-            if (deleteMatchBtn) {
-                deleteMatchBtn.addEventListener('click', openModal);
-            }
-            if (cancelBtn) {
-                cancelBtn.addEventListener('click', closeModal);
-            }
-            if (confirmBtn) {
-                confirmBtn.addEventListener('click', handleDelete);
-            }
-            if (modal) {
-                modal.addEventListener('click', (event) => {
-                    if (event.target === modal) {
-                        closeModal();
-                    }
-                });
-            }
+            if (deleteMatchBtn) deleteMatchBtn.addEventListener('click', openModal);
+            if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+            if (confirmBtn) confirmBtn.addEventListener('click', handleDelete);
+            if (modal) modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
         });
     </script>
 </body>
