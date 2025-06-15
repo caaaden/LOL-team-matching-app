@@ -1,119 +1,136 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>팀 매칭 및 결과 기록</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}">
-    <style>
-        .player-selection { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-        .player-card { background-color: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; padding: 10px; width: calc(20% - 12px); /* gap 고려하여 약간 줄임 */ min-width: 150px; cursor: pointer; transition: background-color 0.3s; box-sizing: border-box; }
-        .player-card:hover { background-color: #eee; }
-        .player-card.selected { background-color: #d4edda; border-color: #c3e6cb; }
-        .player-card h3 { font-size: 1em; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .player-card .tier { font-weight: bold; color: #2c3e50; font-size: 0.9em; }
-        .player-card .position { display: inline-block; padding: 2px 5px; background-color: #3498db; color: white; border-radius: 3px; margin-top: 3px; font-size: 0.75em; }
-        .player-card .match-score, .player-card .record { font-size: 0.8em; color: #555; margin-top: 3px; }
-
-        .position-TOP { background-color: #e74c3c; } .position-JUNGLE { background-color: #27ae60; }
-        .position-MID { background-color: #f1c40f; color: #333;} .position-ADC { background-color: #e67e22; }
-        .position-SUPPORT { background-color: #3498db; } .position-ALL { background-color: #8e44ad; }
-
-        .selected-counter { margin: 15px 0; font-weight: bold; }
-
-        .recent-matches-section { margin-top: 30px; }
-        .recent-matches-section h2 { margin-bottom: 10px; }
-        .match-item-link { text-decoration: none; color: inherit; display: block; margin-bottom: 8px; }
-        .match-item-link:hover .match-item { background-color: #e9ecef; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .match-item { background-color: #fdfdfd; border: 1px solid #e0e0e0; border-radius: 4px; padding: 12px; transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out; }
-        .match-date { font-size: 0.85em; color: #777; margin-bottom: 6px; }
-        .match-details { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
-        .match-teams-summary { flex-grow: 1; min-width: 180px; font-size: 0.9em; line-height: 1.3; }
-        .match-winner-summary { font-weight: bold; color: #27ae60; font-size: 0.9em; }
-        .match-pending-summary { color: #e67e22; font-style: italic; font-size: 0.9em; }
-
-        #multiMatchResults { margin-top: 20px; padding: 10px; background-color: #f0f8ff; border-radius: 5px;}
-        #multiMatchResults h3 { margin-bottom: 10px;}
-        #multiMatchResults a { display: block; margin-bottom: 5px; color: #007bff; text-decoration: none;}
-        #multiMatchResults a:hover { text-decoration: underline;}
-
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="container">
-        <h1>팀 매칭 생성</h1>
+<body class="bg-gray-100 font-sans">
 
-        <div class="match-maker">
-            <h2>플레이어 선택</h2>
-            <p class="subtitle">매칭할 플레이어를 선택하세요 (10명 또는 10의 배수)</p>
-            <div class="selected-counter">선택된 플레이어: <span id="selectedCount">0</span>명</div>
-            <div class="player-selection" id="playerSelection">
+    <!-- 삭제 확인 모달 -->
+    <div id="deleteConfirmModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden transition-opacity duration-300 ease-in-out" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 transform transition-all duration-300 ease-in-out scale-95 opacity-0">
+            <div class="p-6">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0 mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                        <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                        </svg>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                        <h3 class="text-lg font-semibold leading-6 text-gray-900" id="modal-title">매치 삭제 확인</h3>
+                        <div class="mt-2">
+                            <p class="text-sm text-gray-500" id="modal-message">정말로 이 매치를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 rounded-b-lg">
+                <button type="button" id="confirmDeleteButton" class="inline-flex w-full justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto disabled:bg-red-300">
+                    <span class="button-text">삭제</span>
+                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </button>
+                <button type="button" id="cancelDeleteButton" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">
+                    취소
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto max-w-6xl mt-12 mb-12 p-8 bg-white rounded-xl shadow-lg">
+        <h1 class="text-4xl font-bold text-gray-800 text-center mb-4">팀 매칭 생성</h1>
+        <p class="text-center text-gray-500 mb-8">매칭할 플레이어를 선택하세요 (10명 단위)</p>
+
+        <div class="mb-6 p-6 bg-slate-50 border border-slate-200 rounded-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-semibold text-gray-700">플레이어 선택</h2>
+                <div class="text-lg font-bold text-blue-600">선택된 플레이어: <span id="selectedCount">0</span>명</div>
+            </div>
+            <div id="playerSelection" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                 {% for player in players %}
-                    <div class="player-card" data-id="{{ player.id }}">
-                        <h3>{{ player.nickname }}</h3>
-                        <div class="tier">
+                    <div class="player-card p-3 border border-gray-200 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md hover:border-blue-400" data-id="{{ player.id }}">
+                        <h3 class="font-bold text-gray-800 truncate">{{ player.nickname }}</h3>
+                        <div class="text-sm font-semibold {{ TIER_COLOR_MAP.get(player.tier.value, 'bg-gray-200') }} rounded px-2 py-0.5 inline-block my-1">
                             {{ player.tier.value }}
                             {% if player.tier.value not in ['MASTER', 'GRANDMASTER', 'CHALLENGER'] %}
                                 {% if player.division == 1 %}I{% elif player.division == 2 %}II{% elif player.division == 3 %}III{% elif player.division == 4 %}IV{% endif %}
-                                ({{player.lp}}LP)
                             {% else %}
-                                {{ player.division }} 점수
+                                {{ player.division }}
                             {% endif %}
                         </div>
-                        <div>
-                            <span class="position {{ player.position.value }}">{{ player.position.value }}</span>
+                        <div class="flex gap-1 mt-1">
+                            <span class="text-xs font-semibold px-2 py-0.5 rounded {{ POSITION_COLOR_MAP.get(player.position.value, 'bg-gray-400 text-white') }}">{{ player.position.value }}</span>
                             {% if player.sub_position %}
-                                <span class="position {{ player.sub_position.value }}" style="background-color: #7f8c8d;">{{ player.sub_position.value }}</span>
+                                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-gray-400 text-white">{{ player.sub_position.value }}</span>
                             {% endif %}
                         </div>
-                        <div class="match-score">매칭: {{ "%.0f"|format(player.match_score) }}</div>
-                        <div class="record">{{ player.win_count }}승 {{ player.lose_count }}패</div>
+                        <div class="text-xs text-gray-500 mt-1.5">
+                            <span>매칭: {{ "%.0f"|format(player.match_score) }}</span> /
+                            <span>{{ player.win_count }}승 {{ player.lose_count }}패</span>
+                        </div>
                     </div>
                 {% endfor %}
-                 {% if not players %}
-                    <p>등록된 플레이어가 없습니다. <a href="{{url_for('player_management_page')}}">플레이어 관리</a> 페이지에서 먼저 플레이어를 등록해주세요.</p>
-                {% elif players|length < 10 %}
-                     <p>팀 매칭을 위해서는 최소 10명의 플레이어가 등록되어 있어야 합니다. 현재 {{ players|length }}명 등록됨.</p>
-                {% endif %}
             </div>
-            <button id="createMatchBtn" class="btn btn-primary" disabled>팀 매칭 시작 및 상세 보기</button>
-            <div id="multiMatchResults" style="display:none;">
-                <h3>생성된 매치 목록</h3>
-                <div id="multiMatchLinks"></div>
+            <div class="mt-6 text-center">
+                <button id="createMatchBtn" class="py-3 px-8 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none transition-all" disabled>
+                    팀 매칭 시작 및 상세 보기
+                </button>
+            </div>
+             <div id="multiMatchResults" style="display:none;" class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
+                <h3 class="font-bold text-blue-800 mb-2">생성된 매치 목록 (새 탭에서 열림)</h3>
+                <div id="multiMatchLinks" class="space-y-2"></div>
             </div>
         </div>
 
-        <div class="recent-matches-section">
-            <h2>최근 매치 목록 (클릭 시 상세 및 결과 입력)</h2>
-            <div id="recentMatchesList">
+        <div class="mt-12">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">최근 매치 목록</h2>
+            <div id="recent-matches-list" class="space-y-3">
                 {% if recent_matches %}
                     {% for match in recent_matches %}
-                    <a href="{{ url_for('match_detail_page', match_id=match.id) }}" class="match-item-link">
-                        <div class="match-item">
-                            <div class="match-date">{{ match.match_date.strftime('%Y-%m-%d %H:%M') }}</div>
-                            <div class="match-details">
-                                <div class="match-teams-summary">
-                                    블루 (Avg 티어: {{ "%.0f"|format(match.blue_team_avg_score) }}) vs
-                                    레드 (Avg 티어: {{ "%.0f"|format(match.red_team_avg_score) }})
-                                    <br>밸런스(티어): {{ "%.1f"|format(match.balance_score) }}
+                    <div class="match-item-container flex items-center gap-2 p-4 border border-gray-200 rounded-lg transition-colors hover:bg-gray-50">
+                        <a href="{{ url_for('match_detail_page', match_id=match.id) }}" class="flex-grow">
+                            <div class="flex justify-between items-center">
+                                <div class="flex-1">
+                                    <p class="text-sm text-gray-500 mb-1">{{ match.match_date.strftime('%Y-%m-%d %H:%M') }}</p>
+                                    <div class="font-semibold text-gray-700">
+                                        <span class="text-blue-600">블루팀</span> (Avg: {{ "%.0f"|format(match.blue_team_avg_score) }})
+                                        <span class="text-gray-400 mx-2">vs</span>
+                                        <span class="text-red-600">레드팀</span> (Avg: {{ "%.0f"|format(match.red_team_avg_score) }})
+                                    </div>
+                                    <p class="text-xs text-gray-400 mt-1">밸런스 점수: {{ "%.1f"|format(match.balance_score) }}</p>
                                 </div>
-                                {% if match.is_completed %}
-                                <span class="match-winner-summary">승리: {{ "블루팀" if match.winner == "BLUE" else "레드팀" }}</span>
-                                {% else %}
-                                <span class="match-pending-summary">결과 대기중</span>
-                                {% endif %}
+                                <div class="ml-4">
+                                    {% if match.is_completed %}
+                                        <span class="px-3 py-1 text-sm font-bold rounded-full {{ 'bg-blue-100 text-blue-800' if match.winner == 'BLUE' else 'bg-red-100 text-red-800' }}">
+                                            {{ "블루팀" if match.winner == "BLUE" else "레드팀" }} 승리
+                                        </span>
+                                    {% else %}
+                                        <span class="px-3 py-1 text-sm font-bold rounded-full bg-yellow-100 text-yellow-800">결과 대기중</span>
+                                    {% endif %}
+                                </div>
                             </div>
-                        </div>
-                    </a>
+                        </a>
+                        {% if not match.is_completed %}
+                        <button class="delete-recent-match-btn flex-shrink-0 p-2 text-gray-400 hover:text-red-600 hover:bg-red-100 rounded-full transition-colors" data-match-id="{{ match.id }}" title="매치 삭제">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                        {% endif %}
+                    </div>
                     {% endfor %}
                 {% else %}
-                    <p>진행된 매치가 없습니다.</p>
+                    <p class="text-center text-gray-500 py-4">진행된 매치가 없습니다.</p>
                 {% endif %}
             </div>
         </div>
 
-        <div class="actions">
-            <a href="{{ url_for('home') }}" class="btn">메인으로 돌아가기</a>
+        <div class="mt-12 text-center">
+            <a href="{{ url_for('home') }}" class="inline-block py-2 px-6 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75 transition">메인으로 돌아가기</a>
         </div>
     </div>
 
@@ -126,10 +143,7 @@
             const multiMatchLinksDiv = document.getElementById('multiMatchLinks');
 
             let selectedPlayers = [];
-            const minPlayersRequired = 10; // 최소 플레이어 수
-
-            // 초기 버튼 상태 업데이트
-            updateCreateMatchButtonState();
+            const minPlayersRequired = 10;
 
             function updateCreateMatchButtonState() {
                 const numSelected = selectedPlayers.length;
@@ -146,11 +160,13 @@
                 }
             }
 
-
             playerCards.forEach(card => {
                 card.addEventListener('click', function() {
                     const playerId = parseInt(this.dataset.id);
                     this.classList.toggle('selected');
+                    this.classList.toggle('bg-green-100');
+                    this.classList.toggle('border-green-500');
+                    this.classList.toggle('shadow-lg');
 
                     if (this.classList.contains('selected')) {
                         selectedPlayers.push(playerId);
@@ -167,18 +183,17 @@
                 createMatchBtn.addEventListener('click', async function() {
                     this.disabled = true;
                     this.textContent = "매칭 중...";
-                    multiMatchResultsDiv.style.display = 'none'; // 이전 결과 숨기기
-                    multiMatchLinksDiv.innerHTML = ''; // 이전 링크 지우기
+                    multiMatchResultsDiv.style.display = 'none';
+                    multiMatchLinksDiv.innerHTML = '';
 
                     const numSelected = selectedPlayers.length;
                     let apiUrl = "";
 
-                    // API 엔드포인트 결정 (main.py의 MatchCreate 스키마를 사용하도록 통일)
                     if (numSelected === 10) {
                         apiUrl = `{{ url_for('create_match_api') }}`;
                     } else if (numSelected > 10 && numSelected % 10 === 0) {
                         apiUrl = `{{ url_for('create_multiple_matches_api') }}`;
-                    } else { // 이 경우는 버튼 활성화 로직에서 이미 걸러짐
+                    } else {
                         alert("플레이어 수는 10명 또는 10의 배수여야 합니다.");
                         this.disabled = false;
                         this.textContent = "팀 매칭 시작 및 상세 보기";
@@ -186,10 +201,7 @@
                     }
 
                     try {
-                        // 두 API 모두 payload: schemas.MatchCreate 를 받으므로,
-                        // 요청 본문은 { "player_ids": [...] } 형태여야 함.
                         const payload = { player_ids: selectedPlayers };
-
                         const response = await fetch(apiUrl, {
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
@@ -204,37 +216,118 @@
 
                         const responseData = await response.json();
 
-                        if (numSelected === 10) { // 단일 매치 생성 결과 (MatchWithTeams 객체)
+                        if (numSelected === 10) {
                             window.location.href = `{{ url_for('match_detail_page', match_id=0) }}`.replace('/0', '/' + responseData.id);
-                        } else { // 여러 매치 생성 결과 (List[MatchWithTeams] 객체)
+                        } else {
                             if (responseData && responseData.length > 0) {
                                 multiMatchResultsDiv.style.display = 'block';
                                 responseData.forEach((match, index) => {
                                    const link = document.createElement('a');
                                    link.href = `{{ url_for('match_detail_page', match_id=0) }}`.replace('/0', '/' + match.id);
                                    link.textContent = `그룹 ${index + 1} 매치 (ID: ${match.id}) - 상세 및 결과 입력`;
-                                   link.target = "_blank"; // 새 탭에서 열기
+                                   link.target = "_blank";
+                                   link.className = "text-blue-600 hover:underline font-semibold";
                                    multiMatchLinksDiv.appendChild(link);
                                    multiMatchLinksDiv.appendChild(document.createElement('br'));
                                 });
                                 alert(`${responseData.length}개의 매치가 생성되었습니다. 아래 목록에서 각 매치 상세 정보를 확인하세요.`);
-                                // 페이지 새로고침 또는 최근 매치 목록 업데이트 로직 추가 가능
-                                // window.location.reload(); // 간단하게는 새로고침
+                                setTimeout(() => window.location.reload(), 1000);
                             } else {
                                 alert("매치가 생성되었으나, 반환된 매치 데이터가 없습니다.");
                             }
                         }
-
                     } catch (error) {
                         console.error("팀 매칭 API 호출 오류:", error);
                         alert(error.message || '팀 매칭 중 알 수 없는 오류가 발생했습니다.');
-                    } finally { // 성공/실패 여부와 관계없이 버튼 상태 복원
+                    } finally {
                         this.disabled = false;
                         this.textContent = "팀 매칭 시작 및 상세 보기";
-                        updateCreateMatchButtonState(); // 선택된 플레이어 수에 따라 버튼 다시 활성화/비활성화
+                        updateCreateMatchButtonState();
                     }
                 });
             }
+
+            const modal = document.getElementById('deleteConfirmModal');
+            const confirmBtn = document.getElementById('confirmDeleteButton');
+            const cancelBtn = document.getElementById('cancelDeleteButton');
+            const modalContent = modal.querySelector('div');
+            const recentMatchesList = document.getElementById('recent-matches-list');
+
+            let matchIdToDelete = null;
+            let elementToDelete = null;
+
+            const openModal = () => {
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modal.classList.remove('opacity-0');
+                    modalContent.classList.remove('scale-95', 'opacity-0');
+                }, 10);
+            };
+
+            const closeModal = () => {
+                modal.classList.add('opacity-0');
+                modalContent.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                    matchIdToDelete = null;
+                    elementToDelete = null;
+                }, 300);
+            };
+
+            const setLoadingState = (isLoading) => {
+                confirmBtn.disabled = isLoading;
+                confirmBtn.querySelector('.button-text').classList.toggle('hidden', isLoading);
+                confirmBtn.querySelector('svg').classList.toggle('hidden', !isLoading);
+            };
+
+            const handleDelete = async () => {
+                if (!matchIdToDelete) return;
+
+                setLoadingState(true);
+                try {
+                    const response = await fetch(`/match/${matchIdToDelete}`, {
+                        method: 'DELETE',
+                        credentials: 'same-origin'
+                    });
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (elementToDelete) {
+                            elementToDelete.style.transition = 'opacity 0.5s ease';
+                            elementToDelete.style.opacity = '0';
+                            setTimeout(() => elementToDelete.remove(), 500);
+                        }
+                    } else {
+                        const errorData = await response.json().catch(() => ({ detail: "매치 삭제 중 오류 발생" }));
+                        alert(errorData.detail || "매치 삭제 중 알 수 없는 오류");
+                    }
+                } catch (error) {
+                    console.error("매치 삭제 API 호출 오류:", error);
+                    alert('서버 연결 중 오류가 발생했습니다.');
+                } finally {
+                    setLoadingState(false);
+                    closeModal();
+                }
+            };
+
+            if (recentMatchesList) {
+                recentMatchesList.addEventListener('click', (event) => {
+                    const deleteButton = event.target.closest('.delete-recent-match-btn');
+                    if (deleteButton) {
+                        event.preventDefault();
+                        event.stopPropagation();
+
+                        matchIdToDelete = deleteButton.dataset.matchId;
+                        elementToDelete = deleteButton.closest('.match-item-container');
+                        openModal();
+                    }
+                });
+            }
+
+            if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+            if (confirmBtn) confirmBtn.addEventListener('click', handleDelete);
+            if (modal) modal.addEventListener('click', (event) => {
+                if (event.target === modal) closeModal();
+            });
         });
     </script>
 </body>

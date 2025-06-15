@@ -1,4 +1,5 @@
-# main.py - 메모리 누수 방지 및 최적화 버전
+### `main.py`
+# main.py - Tailwind CSS 지원 및 최적화 버전
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, Body, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -7,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -26,7 +27,7 @@ import schemas
 from utils import calculate_tier_score, balance_teams, update_team_match_scores, POSITIONS_ORDER, \
     distribute_players_to_groups
 
-# 환경 설정
+# --- 환경 설정 ---
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-is-still-secret-but-use-env-var")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 120
@@ -37,6 +38,40 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 ADMIN_USER_ID = os.getenv("ADMIN_USER_ID", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Qv4RDGoEE8G41ru")
 
+# --- Tailwind CSS 클래스 맵 (중앙 관리) ---
+POSITION_COLOR_MAP = {
+    "TOP": "bg-red-600 text-white",
+    "JUNGLE": "bg-green-600 text-white",
+    "MID": "bg-yellow-500 text-black",
+    "ADC": "bg-orange-500 text-white",
+    "SUPPORT": "bg-blue-500 text-white",
+    "ALL": "bg-purple-600 text-white",
+}
+
+TIER_COLOR_MAP = {
+    "IRON": "bg-gray-700 text-white",
+    "BRONZE": "bg-amber-700 text-white",
+    "SILVER": "bg-slate-400 text-black",
+    "GOLD": "bg-yellow-400 text-black",
+    "PLATINUM": "bg-teal-400 text-black",
+    "EMERALD": "bg-emerald-500 text-white",
+    "DIAMOND": "bg-sky-400 text-black",
+    "MASTER": "bg-purple-500 text-white",
+    "GRANDMASTER": "bg-red-500 text-white",
+    "CHALLENGER": "bg-gradient-to-r from-yellow-400 to-sky-400 text-black font-bold",
+}
+
+
+# --- 템플릿 렌더링 헬퍼 ---
+def render_template(template_name: str, context: Dict):
+    """모든 템플릿에 공통 컨텍스트를 추가하는 헬퍼 함수"""
+    common_context = {
+        "POSITION_COLOR_MAP": POSITION_COLOR_MAP,
+        "TIER_COLOR_MAP": TIER_COLOR_MAP
+    }
+    context.update(common_context)
+    return templates.TemplateResponse(template_name, context)
+
 
 # 메모리 누수 방지를 위한 개선된 데이터베이스 세션 관리
 def get_db():
@@ -45,12 +80,10 @@ def get_db():
     try:
         yield db
     except Exception as e:
-        # 예외 발생 시 롤백 처리
         db.rollback()
         print(f"데이터베이스 세션 오류: {e}")
         raise
     finally:
-        # 세션 확실히 종료
         try:
             db.close()
         except Exception as e:
@@ -278,7 +311,7 @@ async def login_required(user: Optional[models.User] = Depends(get_current_user_
 @app.get("/", response_class=HTMLResponse, name="home")
 async def home(request: Request, db: Session = Depends(get_db)):
     user = await get_current_user_from_cookie(request, db)
-    return templates.TemplateResponse("index.html", {"request": request, "user": user})
+    return render_template("index.html", {"request": request, "user": user})
 
 
 @app.get("/login", response_class=HTMLResponse, name="login_page")
@@ -287,38 +320,32 @@ async def login_page(request: Request, db: Session = Depends(get_db)):
     if user and user.user_id == ADMIN_USER_ID:
         return RedirectResponse(url=app.url_path_for("home"), status_code=status.HTTP_303_SEE_OTHER)
     error_message = request.query_params.get("error")
-    return templates.TemplateResponse("login.html", {"request": request, "error": error_message})
+    return render_template("login.html", {"request": request, "error": error_message})
 
 
-# 로그인 로직 (활성 세션 처리)
 @app.post("/login", name="login_form_submit")
 async def login_form_post(request: Request, user_id: str = Form(...), password: str = Form(...),
                           db: Session = Depends(get_db)):
     if user_id != ADMIN_USER_ID:
-        return templates.TemplateResponse("login.html", {"request": request, "error": "관리자 아이디가 아닙니다."})
+        return render_template("login.html", {"request": request, "error": "관리자 아이디가 아닙니다."})
 
     user = authenticate_user(db, user_id, password)
     if not user:
-        return templates.TemplateResponse("login.html", {"request": request, "error": "아이디 또는 비밀번호가 잘못되었습니다."})
+        return render_template("login.html", {"request": request, "error": "아이디 또는 비밀번호가 잘못되었습니다."})
 
-    # 로그인 시도 시, 이미 활성 세션이 있는지 확인
     existing_session = db.query(models.ActiveSession).filter(models.ActiveSession.user_id == user.id).first()
     if existing_session:
-        # 만료된 세션이면 삭제하고 로그인 허용
         if existing_session.expires_at < datetime.utcnow():
             db.delete(existing_session)
             db.commit()
         else:
-            # 유효한 세션이 있으면 로그인 거부
-            return templates.TemplateResponse("login.html",
+            return render_template("login.html",
                                               {"request": request, "error": "해당 계정은 이미 다른 기기에서 로그인되어 있습니다."})
 
-    # 새 세션 생성
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     expire_datetime = datetime.utcnow() + access_token_expires
     access_token = create_access_token(data={"sub": user.user_id}, expires_delta=access_token_expires)
 
-    # DB에 활성 세션 정보 저장
     new_session = models.ActiveSession(user_id=user.id, token=access_token, expires_at=expire_datetime)
     db.add(new_session)
     db.commit()
@@ -335,10 +362,8 @@ async def login_form_post(request: Request, user_id: str = Form(...), password: 
     return response
 
 
-# 로그아웃 (활성 세션 정리)
 @app.get("/logout", name="logout")
 async def logout(request: Request, db: Session = Depends(get_db)):
-    # 쿠키에서 토큰을 읽어와 DB의 세션 정보를 삭제
     token_from_cookie = request.cookies.get("access_token")
     if token_from_cookie:
         token = token_from_cookie.replace("Bearer ", "")
@@ -356,7 +381,7 @@ async def logout(request: Request, db: Session = Depends(get_db)):
 async def player_management_page(request: Request, admin: models.User = Depends(login_required),
                                  db: Session = Depends(get_db)):
     players = db.query(models.Player).order_by(models.Player.nickname).all()
-    return templates.TemplateResponse("player_management.html", {
+    return render_template("player_management.html", {
         "request": request,
         "user": admin,
         "players": players,
@@ -465,7 +490,7 @@ async def match_maker_page(request: Request, admin: models.User = Depends(login_
                            db: Session = Depends(get_db)):
     players = db.query(models.Player).order_by(models.Player.nickname).all()
     recent_matches = db.query(models.Match).order_by(models.Match.match_date.desc()).limit(10).all()
-    return templates.TemplateResponse("match_maker.html", {
+    return render_template("match_maker.html", {
         "request": request,
         "user": admin,
         "players": players,
@@ -696,7 +721,7 @@ async def match_detail_page(match_id: int, request: Request, admin: models.User 
          "assigned_pos_value": ta.assigned_player_position.value} for ta
         in red_assignments if db.query(models.Player).get(ta.player_id)]
 
-    return templates.TemplateResponse("match_detail.html", {
+    return render_template("match_detail.html", {
         "request": request,
         "user": admin,
         "match": match,
@@ -724,6 +749,26 @@ def record_match_result_api(match_id: int, result_data: schemas.MatchResult, db:
     db.refresh(match)
     return {"message": f"{result_data.winner} 팀 승리! 결과 등록 완료.", "match_id": match_id, "winner": result_data.winner}
 
+@app.delete("/match/{match_id}", name="delete_match_api", status_code=status.HTTP_200_OK, tags=["api_match"])
+def delete_match_api(match_id: int, db: Session = Depends(get_db), admin: models.User = Depends(login_required)):
+    """미완료된 매치를 삭제하는 API 엔드포인트"""
+    match = db.query(models.Match).filter(models.Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="매치를 찾을 수 없습니다.")
+
+    if match.is_completed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 결과가 등록된 매치는 삭제할 수 없습니다.")
+
+    try:
+        # TeamAssignment는 Match 모델의 cascade 설정으로 자동 삭제됩니다.
+        db.delete(match)
+        db.commit()
+        return JSONResponse(status_code=status.HTTP_200_OK, content={"message": f"매치(ID: {match_id})가 성공적으로 삭제되었습니다."})
+    except Exception as e:
+        db.rollback()
+        print(f"매치 삭제 중 오류 발생: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="매치 삭제 중 서버 오류가 발생했습니다.")
 
 @app.get("/player-stats", response_class=HTMLResponse, name="player_stats_page")
 async def player_stats_page(request: Request, admin: models.User = Depends(login_required),
@@ -756,7 +801,7 @@ async def player_stats_page(request: Request, admin: models.User = Depends(login
     if sort_by in key_map:
         player_stats_data.sort(key=key_map[sort_by], reverse=(order == "desc"))
 
-    return templates.TemplateResponse("player_stats.html", {
+    return render_template("player_stats.html", {
         "request": request,
         "user": admin,
         "player_stats": player_stats_data,
@@ -768,7 +813,7 @@ async def player_stats_page(request: Request, admin: models.User = Depends(login
 @app.get("/help", response_class=HTMLResponse, name="help_page")
 async def help_page(request: Request, db: Session = Depends(get_db)):
     user = await get_current_user_from_cookie(request, db)
-    return templates.TemplateResponse("help.html", {"request": request, "user": user})
+    return render_template("help.html", {"request": request, "user": user})
 
 
 @app.post("/token", response_model=schemas.Token, tags=["api_auth"], name="api_login_for_token")

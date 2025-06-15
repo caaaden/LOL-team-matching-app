@@ -59,7 +59,7 @@ class PlayerBase(BaseModel):
         if tier_value:
             if tier_value in ['MASTER', 'GRANDMASTER', 'CHALLENGER']:
                 if v < 0:  # LP는 0 이상
-                    raise ValueError('LP(점수)는 0 이상이어야 합니다')
+                    raise ValueError('점수는 0 이상이어야 합니다')
             elif v not in [1, 2, 3, 4]:
                 raise ValueError('디비전은 1, 2, 3, 4 중 하나여야 합니다')
         return v
@@ -78,6 +78,15 @@ class PlayerBase(BaseModel):
                 raise ValueError('주 포지션과 부 포지션은 같을 수 없습니다 (ALL 제외).')
 
         return v
+
+    @validator('lp', pre=True, always=True)
+    def validate_lp_by_tier(cls, v, values):
+        """다이아몬드 이하 티어의 LP는 0으로 고정합니다."""
+        tier = values.get('tier')
+        if tier and tier not in [TierEnum.MASTER, TierEnum.GRANDMASTER, TierEnum.CHALLENGER]:
+            return 0  # 다이아몬드 이하는 LP를 0으로 강제
+        # 마스터 이상은 전달된 값을 그대로 사용 (또는 0으로 기본값 설정)
+        return v if v is not None else 0
 
 
 class PlayerCreate(PlayerBase):
