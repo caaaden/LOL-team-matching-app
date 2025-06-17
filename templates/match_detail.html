@@ -88,7 +88,7 @@
                         <h2 class="text-2xl font-bold text-white bg-blue-600 p-3 rounded-t-lg text-center">블루 팀</h2>
                         <div class="divide-y divide-blue-200/50">
                             {% for info in blue_team_info %}
-                            <div class="p-4 flex items-center gap-4">
+                            <div class="player-card p-4 flex items-center gap-4" data-player-id="{{ info.player.id }}">
                                 <span class="font-bold text-sm text-center rounded px-3 py-1 w-20 shadow-sm {{ POSITION_COLOR_MAP.get(info.assigned_pos_value, 'bg-gray-400 text-white') }}">{{ info.assigned_pos_value }}</span>
                                 <div class="flex-grow">
                                     <p class="font-bold text-lg text-gray-800">{{ info.player.nickname }}</p>
@@ -105,7 +105,7 @@
                         <h2 class="text-2xl font-bold text-white bg-red-600 p-3 rounded-t-lg text-center">레드 팀</h2>
                         <div class="divide-y divide-red-200/50">
                             {% for info in red_team_info %}
-                            <div class="p-4 flex items-center gap-4">
+                            <div class="player-card p-4 flex items-center gap-4" data-player-id="{{ info.player.id }}">
                                 <span class="font-bold text-sm text-center rounded px-3 py-1 w-20 shadow-sm {{ POSITION_COLOR_MAP.get(info.assigned_pos_value, 'bg-gray-400 text-white') }}">{{ info.assigned_pos_value }}</span>
                                 <div class="flex-grow">
                                     <p class="font-bold text-lg text-gray-800">{{ info.player.nickname }}</p>
@@ -122,6 +122,10 @@
 
                 <div class="mt-12 border-t border-gray-200/50 pt-8 flex justify-center items-center gap-4 flex-wrap">
                     <a href="{{ url_for('match_maker_page') }}" class="py-2 px-5 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-all duration-300">새 매치 만들기</a>
+                    <button id="rematchBtn" class="py-2 px-5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-all duration-300">
+                        <span class="button-text">현재 멤버로 리매치</span>
+                        <svg class="animate-spin h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    </button>
                     {% if not match.is_completed %}
                     <button id="deleteMatchBtn" class="py-2 px-5 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-all duration-300">매치 삭제</button>
                     {% endif %}
@@ -154,6 +158,7 @@
                 case 'success':
                     modalIconContainer.classList.add('bg-green-100');
                     successIcon.classList.remove('hidden');
+                    successIcon.classList.add('text-green-600');
                     newConfirmBtn.textContent = '확인';
                     newConfirmBtn.className = 'inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:w-auto bg-green-600 hover:bg-green-500';
                     cancelBtn.classList.add('hidden');
@@ -161,6 +166,7 @@
                 case 'error':
                     modalIconContainer.classList.add('bg-red-100');
                     errorIcon.classList.remove('hidden');
+                    errorIcon.classList.add('text-red-600');
                     newConfirmBtn.textContent = '확인';
                     newConfirmBtn.className = 'inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:w-auto bg-red-600 hover:bg-red-500';
                     cancelBtn.classList.add('hidden');
@@ -168,6 +174,7 @@
                 case 'confirm':
                     modalIconContainer.classList.add('bg-yellow-100');
                     confirmIcon.classList.remove('hidden');
+                    confirmIcon.classList.add('text-yellow-600');
                     newConfirmBtn.textContent = '확인';
                     newConfirmBtn.className = 'inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:w-auto bg-blue-600 hover:bg-blue-500';
                     cancelBtn.classList.remove('hidden');
@@ -222,6 +229,53 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            const currentPlayerIds = [
+                ...Array.from(document.querySelectorAll('.team-blue .player-card')).map(card => parseInt(card.dataset.playerId)),
+                ...Array.from(document.querySelectorAll('.team-red .player-card')).map(card => parseInt(card.dataset.playerId))
+            ];
+
+            const rematchBtn = document.getElementById('rematchBtn');
+            if (rematchBtn) {
+                rematchBtn.addEventListener('click', async () => {
+                    const setLoadingState = (isLoading) => {
+                        rematchBtn.disabled = isLoading;
+                        rematchBtn.querySelector('.button-text').classList.toggle('hidden', isLoading);
+                        rematchBtn.querySelector('svg').classList.toggle('hidden', !isLoading);
+                    };
+
+                    if (currentPlayerIds.length !== 10) {
+                        showInfoModal('오류', '리매치를 위한 플레이어 정보가 올바르지 않습니다 (10명이 아님).', 'error');
+                        return;
+                    }
+
+                    setLoadingState(true);
+
+                    try {
+                        const payload = { player_ids: currentPlayerIds };
+                        const response = await fetch("{{ url_for('create_match_api') }}", {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload),
+                            credentials: 'same-origin'
+                        });
+
+                        if (response.ok) {
+                            const newMatch = await response.json();
+                            showInfoModal('리매치 생성 완료', '새로운 매치가 생성되었습니다. 잠시 후 이동합니다.', 'success', () => {
+                                window.location.href = `{{ url_for('match_detail_page', match_id=0) }}`.replace('/0', '/' + newMatch.id);
+                            });
+                        } else {
+                            const errorData = await response.json().catch(() => ({detail: "리매치 생성 중 오류가 발생했습니다."}));
+                            showInfoModal('오류', errorData.detail, 'error');
+                        }
+                    } catch (error) {
+                        showInfoModal('연결 오류', '서버 연결 중 오류가 발생했습니다.', 'error');
+                    } finally {
+                        setLoadingState(false);
+                    }
+                });
+            }
+
             const deleteMatchBtn = document.getElementById('deleteMatchBtn');
             const modal = document.getElementById('deleteConfirmModal');
             const confirmBtn = document.getElementById('confirmDeleteButton');
