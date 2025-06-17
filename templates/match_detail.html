@@ -58,7 +58,7 @@
             <div class="p-6 sm:p-8">
                 <div class="text-center mb-8">
                     <h1 class="text-4xl font-black text-gray-800 tracking-tight">매치 상세 정보</h1>
-                    <p class="text-gray-500 mt-2">{{ match.match_date.strftime('%Y년 %m월 %d일 %H:%M') }}</p>
+                    <p class="text-gray-500 mt-2">{{ match.match_date | kst }}</p>
                 </div>
 
                 <div class="mb-8 p-6 bg-gray-500/5 rounded-xl border border-gray-200">

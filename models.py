@@ -90,7 +90,7 @@ class Match(Base):
     __tablename__ = "matches"
 
     id = Column(Integer, primary_key=True, index=True)
-    match_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone(timedelta(hours=9))), nullable=False)
+    match_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     blue_team_avg_score = Column(Float, nullable=False)
     red_team_avg_score = Column(Float, nullable=False)
     blue_team_match_score = Column(Float, nullable=False)

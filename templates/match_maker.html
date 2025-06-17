@@ -103,7 +103,7 @@
                                 <a href="{{ url_for('match_detail_page', match_id=match.id) }}" class="flex-grow">
                                     <div class="flex justify-between items-center">
                                         <div class="flex-1">
-                                            <p class="text-sm text-gray-500 mb-1">{{ match.match_date.strftime('%Y-%m-%d %H:%M') }}</p>
+                                            <p class="text-sm text-gray-500 mb-1">{{ match.match_date | kst('%Y-%m-%d %H:%M') }}</p>
                                             <div class="font-semibold text-gray-700 text-lg"><span class="text-blue-600 font-bold">블루팀</span> <span class="text-gray-400 mx-1">vs</span> <span class="text-red-600 font-bold">레드팀</span></div>
                                             <p class="text-xs text-gray-400 mt-1">밸런스 점수: {{ "%.1f"|format(match.balance_score) }}</p>
                                         </div>

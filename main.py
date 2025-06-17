@@ -19,6 +19,7 @@ import traceback
 import gc
 import psutil
 import asyncio
+import random
 
 from database import SessionLocal, engine, Base
 import models
@@ -59,7 +60,6 @@ TIER_COLOR_MAP = {
     "GRANDMASTER": "bg-red-500 text-white",
     "CHALLENGER": "bg-gradient-to-r from-yellow-400 to-sky-400 text-black font-bold",
 }
-
 
 # --- 템플릿 렌더링 헬퍼 ---
 def render_template(template_name: str, context: Dict):
@@ -191,6 +191,19 @@ async def lifespan(app: FastAPI):
         pass
 
 
+# [추가] KST 시간 변환을 위한 Jinja2 커스텀 필터 함수
+def format_datetime_kst(dt, fmt="%Y년 %m월 %d일 %H:%M"):
+    if dt is None:
+        return ""
+    # KST 시간대 객체 생성 (UTC+9)
+    kst_tz = timezone(timedelta(hours=9))
+    # DB에서 온 시간이 timezone 정보가 없다면 UTC로 간주
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    # KST로 시간대 변환 후, 원하는 포맷으로 문자열 반환
+    return dt.astimezone(kst_tz).strftime(fmt)
+
+
 # FastAPI 앱 생성 (lifespan 적용)
 app = FastAPI(title="LoL 팀 매칭 시스템", lifespan=lifespan)
 
@@ -199,6 +212,10 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # 정적 파일 및 템플릿 설정
 templates = Jinja2Templates(directory="templates")
+# [추가] Jinja2 환경에 커스텀 필터 등록
+templates.env.filters['kst'] = format_datetime_kst
+templates.env.globals['url_for'] = app.router.url_path_for # url_for도 globals에 명시적으로 추가해주면 좋습니다.
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
@@ -482,6 +499,136 @@ def delete_player_api(player_id: int, db: Session = Depends(get_db), admin: mode
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"플레이어 삭제 오류: {str(e)}")
 
 
+# APP_ENV를 확인하여 개발 환경일 때만 이 엔드포인트를 등록합니다.
+if os.getenv("APP_ENV", "development").lower() == "development":
+
+    @app.post("/dev/create-random-players/", response_model=List[schemas.Player], name="create_random_players_dev_only",
+              tags=["dev_tools"], status_code=status.HTTP_201_CREATED)
+    def create_random_players(
+            count: int = Query(10, ge=1, le=50, description="생성할 랜덤 플레이어 수"),
+            db: Session = Depends(get_db)
+    ):
+        """
+        **[개발용]** 랜덤 플레이어를 지정된 수만큼 생성합니다.
+        프로덕션 환경에서는 비활성화됩니다.
+        """
+        print(f"🔧 [DEV] {count}명의 랜덤 플레이어 생성을 시작합니다.")
+
+        # 랜덤 생성을 위한 샘플 데이터
+        sample_nicknames_prefix = ["질풍의", "고요한", "타오르는", "냉혹한", "전설의", "무적의", "그림자", "빛의", "심연의", "폭풍의"]
+        sample_nicknames_suffix = ["암살자", "마법사", "전사", "서포터", "원딜러", "사냥꾼", "파괴자", "수호자", "예언자", "망령"]
+
+        created_players = []
+
+        for i in range(count):
+            # 1. 랜덤 닉네임 생성
+            while True:
+                prefix = random.choice(sample_nicknames_prefix)
+                suffix = random.choice(sample_nicknames_suffix)
+                num = random.randint(1, 999)
+                nickname = f"{prefix} {suffix} {num:03d}"
+                # 닉네임 중복 체크
+                existing_player = db.query(models.Player).filter(models.Player.nickname == nickname).first()
+                if not existing_player:
+                    break
+
+            # 2. 랜덤 티어, 디비전, LP 생성
+            tier = random.choice(list(models.Tier))
+            if tier in [models.Tier.MASTER, models.Tier.GRANDMASTER, models.Tier.CHALLENGER]:
+                division = random.randint(0, 1200)
+                lp = 0
+            else:
+                division = random.randint(1, 4)
+                lp = 0  # 다이아 이하 LP는 0으로 고정
+
+            # 3. 랜덤 포지션 생성 (주/부 포지션 로직 고려)
+            positions = list(models.Position)
+            main_pos = random.choice(positions)
+
+            # 주 포지션이 ALL이면 부 포지션은 없음
+            if main_pos == models.Position.ALL:
+                sub_pos = None
+            else:
+                # 주 포지션과 ALL을 제외한 나머지 중에서 부 포지션 선택
+                available_sub_pos = [p for p in positions if p != main_pos and p != models.Position.ALL]
+                # 부 포지션을 선택 안 할 수도 있도록 None 추가
+                available_sub_pos.append(None)
+                sub_pos = random.choice(available_sub_pos)
+
+            # 4. 점수 계산
+            tier_score = calculate_tier_score(tier, division, lp)
+
+            # 5. DB 객체 생성
+            db_player = models.Player(
+                nickname=nickname,
+                tier=tier,
+                division=division,
+                player_position=main_pos,
+                sub_position=sub_pos,
+                lp=lp,
+                tier_score=tier_score,
+                # 초기 매칭 점수는 티어 점수와 동일하게 설정
+                match_score=tier_score,
+                win_count=random.randint(0, 20),
+                lose_count=random.randint(0, 20)
+            )
+
+            db.add(db_player)
+            created_players.append(db_player)
+
+        try:
+            db.commit()
+            for p in created_players:
+                db.refresh(p)
+            print(f"✅ [DEV] {len(created_players)}명의 랜덤 플레이어 생성 완료.")
+            return [schemas.Player.from_orm(p) for p in created_players]
+        except IntegrityError as e:
+            db.rollback()
+            print(f"❌ [DEV] 랜덤 플레이어 저장 중 DB 제약조건 위반: {e}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="플레이어 저장 중 중복 오류 발생. 재시도 해주세요.")
+        except Exception as e:
+            db.rollback()
+            print(f"❌ [DEV] 랜덤 플레이어 저장 중 예외 발생: {e}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="플레이어 저장 중 서버 오류 발생.")
+
+
+    @app.delete("/dev/delete-all-players/", status_code=status.HTTP_200_OK, name="delete_all_players_dev_only",
+                tags=["dev_tools"])
+    def delete_all_players(db: Session = Depends(get_db)):
+        """
+        **[개발용]** 모든 플레이어와 관련된 팀 배정 기록을 삭제합니다.
+        프로덕션 환경에서는 비활성화됩니다.
+        매치 기록은 삭제되지 않습니다 (플레이어 정보만 NULL이 됨).
+        """
+        print("🔧 [DEV] 모든 플레이어 데이터 삭제를 시작합니다.")
+
+        try:
+            # 1. TeamAssignment 테이블의 모든 레코드 삭제
+            # Player를 삭제하기 전에 Player를 참조하는 자식 테이블부터 정리해야 합니다.
+            num_assignments_deleted = db.query(models.TeamAssignment).delete(synchronize_session=False)
+
+            # 2. Player 테이블의 모든 레코드 삭제
+            num_players_deleted = db.query(models.Player).delete(synchronize_session=False)
+
+            db.commit()
+
+            message = (
+                f"✅ [DEV] 모든 플레이어 데이터 삭제 완료. "
+                f"삭제된 플레이어: {num_players_deleted}명, "
+                f"삭제된 팀 배정 기록: {num_assignments_deleted}건."
+            )
+            print(message)
+            return {"message": message}
+
+        except Exception as e:
+            db.rollback()
+            print(f"❌ [DEV] 모든 플레이어 삭제 중 예외 발생: {e}")
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="모든 플레이어 삭제 중 서버 오류가 발생했습니다."
+            )
+
 @app.get("/match-maker", response_class=HTMLResponse, name="match_maker_page")
 async def match_maker_page(request: Request, admin: models.User = Depends(login_required),
                            db: Session = Depends(get_db)):
@@ -525,14 +672,14 @@ def create_match_api(payload: schemas.MatchCreate, db: Session = Depends(get_db)
     red_avg_match = sum(p.match_score for p in red_team_ordered) / 5 if red_team_ordered else 0
     balance_val = abs(blue_avg_tier - red_avg_tier)
 
-    KST = timezone(timedelta(hours=9))
+    # KST = timezone(timedelta(hours=9))
     db_match = models.Match(
         blue_team_avg_score=blue_avg_tier,
         red_team_avg_score=red_avg_tier,
         blue_team_match_score=blue_avg_match,
         red_team_match_score=red_avg_match,
         balance_score=balance_val,
-        match_date=datetime.now(KST)
+        # match_date=datetime.now(KST)
     )
 
     try:
@@ -606,7 +753,7 @@ def create_multiple_matches_api(payload: schemas.MatchCreate, db: Session = Depe
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="플레이어 그룹 분배에 실패했습니다 (결과 없음).")
 
     created_matches_with_teams: List[schemas.MatchWithTeams] = []
-    KST = timezone(timedelta(hours=9))
+    # KST = timezone(timedelta(hours=9))
 
     for group_idx, player_group_for_match in enumerate(player_groups):
         print(f"DEBUG: 그룹 {group_idx} 매치 생성 시작, 플레이어 수: {len(player_group_for_match)}")
@@ -638,7 +785,7 @@ def create_multiple_matches_api(payload: schemas.MatchCreate, db: Session = Depe
         balance_val = abs(blue_avg_tier - red_avg_tier)
 
         db_match_multi = models.Match(
-            match_date=datetime.now(KST) + timedelta(seconds=group_idx),
+            # match_date=datetime.now(KST) + timedelta(seconds=group_idx),
             blue_team_avg_score=blue_avg_tier,
             red_team_avg_score=red_avg_tier,
             blue_team_match_score=blue_avg_match,

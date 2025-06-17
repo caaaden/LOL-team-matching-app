@@ -147,7 +147,7 @@
                                     <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full {{ TIER_COLOR_MAP.get(player.tier.value, 'bg-gray-200') }}">{{ player.tier.value }} {% if player.tier.value not in ['MASTER', 'GRANDMASTER', 'CHALLENGER'] %}{% if player.division == 1 %}I{% elif player.division == 2 %}II{% elif player.division == 3 %}III{% elif player.division == 4 %}IV{% endif %}{% else %}{{ player.division }}{% endif %}</span></td>
                                     <td class="py-4 px-6 font-bold text-gray-700">{{ "%.1f"|format(player.match_score) }}</td>
                                     <td class="py-4 px-6">{{ player.win_count }}승 {{ player.lose_count }}패</td>
-                                    <td class="py-4 px-6">{{ player.created_at.strftime('%Y-%m-%d') }}</td>
+                                    <td class="py-4 px-6">{{ player.created_at | kst('%Y-%m-%d') }}</td>
                                     <td class="py-4 px-6 text-center">
                                         <button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-player-id="{{ player.id }}">수정</button>
                                         <button class="delete-btn font-medium text-red-600 hover:underline" data-player-id="{{ player.id }}" data-player-nickname="{{ player.nickname }}">삭제</button>
